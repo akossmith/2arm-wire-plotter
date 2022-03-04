@@ -39,10 +39,7 @@ G00 Z5.000000
 (End cutting path id: path30404)
 
 
-(Footer)
-M5
-G00 X0.0000 Y0.0000
-M2
+
 (Using default footer. To add your own footer create file "footer" in the output dir.)
 (end)
 %
