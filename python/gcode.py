@@ -47,7 +47,7 @@ curr_y = 0.0
 
 refined_point_list = [(0, 0)]
 
-with open("../kor.ngc") as f:
+with open("../gorbe.ngc") as f:
     lines = f.readlines()
     print(lines)
 
@@ -56,13 +56,10 @@ with open("../kor.ngc") as f:
             splitted = line.split()
             curr_x = float(splitted[1][1:])
             curr_y = float(splitted[2][1:])
-
-            print(f"({curr_x},{curr_y}),", end='')
+            #print(f"({curr_x},{curr_y}),", end='')
             refined_point_list.append((curr_x, curr_y))
-            # xs.append(curr_x)
-            # ys.append(curr_y)
 
-        if line.startswith("G02 X"):
+        elif line.startswith("G02 X"):
             splitted = line.split()
             x = float(splitted[1][1:])
             y = float(splitted[2][1:])
@@ -87,20 +84,42 @@ with open("../kor.ngc") as f:
                 new_x = curr_x + i + math.cos(curr_angle) * R
                 new_y = curr_y + j + math.sin(curr_angle) * R
                 refined_point_list.append((new_x, new_y))
-                # xs.append(new_x)
-                # ys.append(new_y)
-                print(f"({new_x},{new_y}),", end='')
+                #print(f"({new_x},{new_y}),", end='')
                 curr_angle -= max_angle_dist
-            # for ind in range(1, num_new_points):
-            #     angle = gamma + ind * max_angle_dist
-            #     new_x = curr_x + i + math.cos(angle)*R
-            #     new_y = curr_y + j + math.sin(angle)*R
-            #     refined_point_list.append((new_x, new_y))
-            #     print(f"({new_x},{new_y}),", end='')
+            #print(f"({x},{y}),", end='')
+            refined_point_list.append((x, y))
+            curr_x = x
+            curr_y = y
+            # alphas = getAlphas(x, y)
+            # move_to_alphas(alphas)
+        elif line.startswith("G03 X"):
+            splitted = line.split()
+            x = float(splitted[1][1:])
+            y = float(splitted[2][1:])
+            i = float(splitted[4][1:])
+            j = float(splitted[5][1:])
 
-            # x = float(splitted[1][1:]) + target_x_range[0]
-            # y = float(splitted[1][1:]) + target_y_range[0]
-            print(f"({x},{y}),", end='')
+            R = math.sqrt(i ** 2 + j ** 2)
+            cos_phi = (-i * (x - curr_x - i) - j * (y - curr_y - j)) / (i ** 2 + j ** 2)
+            sgn_phi = -1 if (i * (y - curr_y) - j * (x - curr_x)) > 0 else 1
+            phi = sgn_phi * math.acos(cos_phi)  # + 2*math.pi, 2*math.pi)
+            if phi < 0:
+                phi += 2 * math.pi  # always need a negative value, since going CW
+            gamma = math.atan2(-j, -i)
+
+            max_angle_dist = max_point_dist / R
+
+            num_new_points = int(phi / max_angle_dist)
+            curr_angle = gamma
+
+            curr_angle += max_angle_dist
+            while curr_angle < phi + gamma:
+                new_x = curr_x + i + math.cos(curr_angle) * R
+                new_y = curr_y + j + math.sin(curr_angle) * R
+                refined_point_list.append((new_x, new_y))
+                #print(f"({new_x},{new_y}),", end='')
+                curr_angle += max_angle_dist
+            #print(f"({x},{y}),", end='')
             refined_point_list.append((x, y))
             curr_x = x
             curr_y = y
