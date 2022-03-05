@@ -5,8 +5,8 @@ template <typename T> int sgn(T val) {
    return (T(0) < val) - (val < T(0));
 }
 
-const double STEPS_PER_REV = 32;
-const double GEAR_RED = 64;
+const double STEPS_PER_REV = 32.0;
+const double GEAR_RED = 64.0;
 const double STEPS_PER_OUT_REV = STEPS_PER_REV * GEAR_RED;
 
 
@@ -26,14 +26,21 @@ double stepsToDegrees(int steps){
 void setup() {
   Serial.begin(115200);
   Serial.setTimeout(10);
-  motorLeft.setSpeed(50);
-  motorRight.setSpeed(50);
+  motorLeft.setSpeed(200);
+  motorRight.setSpeed(200);
   Serial.println("started");
 }
 
 void loop() {
   if (Serial.available() > 0) {
     String incomingString = Serial.readString();
+    if(incomingString[0] == 's'){
+        int speed = incomingString.substring(1).toInt();
+        motorLeft.setSpeed(speed);
+        motorRight.setSpeed(speed);
+        Serial.print("s"); Serial.println(speed);
+        return;
+    }
     const int rInd = incomingString.indexOf('r');
     const double ldegrees = incomingString.substring(1, rInd).toDouble();
     const int lsteps = degreesToSteps(ldegrees);
