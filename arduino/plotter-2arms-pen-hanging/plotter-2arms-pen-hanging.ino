@@ -15,7 +15,7 @@ Stepper motorLeft(STEPS_PER_REV, 2, 3, 4, 5);
 Stepper motorRight(STEPS_PER_REV, 9, 8, 7, 6);
 
 int degreesToSteps(double degrees) {
-  const double stepsPerDegree = STEPS_PER_OUT_REV / 360;
+  const double stepsPerDegree = STEPS_PER_OUT_REV / 360.0;
   return round(degrees * stepsPerDegree);
 }
 
@@ -28,23 +28,22 @@ void setup() {
   Serial.setTimeout(10);
   motorLeft.setSpeed(200);
   motorRight.setSpeed(200);
-  Serial.println("started");
+  Serial.println("ready");
 }
 
 void loop() {
   if (Serial.available() > 0) {
     String incomingString = Serial.readString();
     if(incomingString[0] == 's'){
-        int speed = incomingString.substring(1).toInt();
+        int speed = int(incomingString.substring(1).toDouble()); // expected double for future improvements
         motorLeft.setSpeed(speed);
         motorRight.setSpeed(speed);
-        Serial.print("s"); Serial.println(speed);
+        Serial.print("s"); Serial.println(speed, 8);
         return;
     }
     const int rInd = incomingString.indexOf('r');
     const double ldegrees = incomingString.substring(1, rInd).toDouble();
     const int lsteps = degreesToSteps(ldegrees);
-    //motorLeft.step(lsteps);
 
     const double rdegrees = incomingString.substring(rInd + 1).toDouble();
     const int rsteps = degreesToSteps(rdegrees);
@@ -64,13 +63,13 @@ void loop() {
         minStepsTaken ++;
       }
     } 
-    motors[smallerIndex]->step(-sgn(steps[smallerIndex])*(abs(steps[smallerIndex])-minStepsTaken));
+    motors[smallerIndex]->step(steps[smallerIndex] - sgn(steps[smallerIndex]) * minStepsTaken);
 
-    //return actual angle deltas in degrees (!= requested due to 
+    //return actual angle deltas in degrees (!= requested due to finite step resolution)
     Serial.print("dl");
-    Serial.println(stepsToDegrees(lsteps));
+    Serial.println(stepsToDegrees(lsteps), 8);
     Serial.print("dr");
-    Serial.println(stepsToDegrees(rsteps));
+    Serial.println(stepsToDegrees(rsteps), 8);
   }
 
 }
