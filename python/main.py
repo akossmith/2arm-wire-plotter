@@ -9,43 +9,6 @@ import math
 import typing
 from gcodehandler import *
 
-# printer physical parameters:
-R1 = 115  # left arm length
-R2 = 117
-l1 = 160  # left wire length
-l2 = 159
-D = 272  # distance of motor axles
-
-square_width = 80
-x_range_margin = (D - square_width) / 2.0
-
-target_x_range = (x_range_margin, D - x_range_margin)
-target_y_range = (-20, 60)
-
-
-def getAlphas(x, y) -> typing.Tuple[float, float]:
-    """x,y in printer coordinates, return: degrees"""
-
-    print(f"x,y: {x:3.5f} {y:3.5f}", end=' ')
-
-    # formulae valid for angles in [0, 180deg] (practically meaningful: [0, ~100deg])
-    ca1 = (x * (R1 ** 2 - l1 ** 2 + x ** 2 + y ** 2) + y * math.sqrt(
-        (-R1 ** 2 + 2 * R1 * l1 - l1 ** 2 + x ** 2 + y ** 2) * (
-                R1 ** 2 + 2 * R1 * l1 + l1 ** 2 - x ** 2 - y ** 2))) / (2 * R1 * (x ** 2 + y ** 2))
-    sa1 = math.sqrt(1 - ca1 ** 2)
-
-    ca2 = (y * math.sqrt((-D ** 2 + 2 * D * x + R2 ** 2 + 2 * R2 * l2 + l2 ** 2 - x ** 2 - y ** 2) * (
-            D ** 2 - 2 * D * x - R2 ** 2 + 2 * R2 * l2 - l2 ** 2 + x ** 2 + y ** 2)) + (D - x) * (
-                   D ** 2 - 2 * D * x + R2 ** 2 - l2 ** 2 + x ** 2 + y ** 2)) / (
-                  2 * R2 * (D ** 2 - 2 * D * x + x ** 2 + y ** 2))
-    sa2 = math.sqrt(1 - ca2 ** 2)
-
-    alpha1 = math.atan2(sa1, ca1) / math.pi * 180
-    alpha2 = math.atan2(sa2, ca2) / math.pi * 180  # by our convenion positive is up (as opposed to math)
-    print(f"alpha1: {alpha1:.5f} alpha2: {alpha2:.5f}")
-    return alpha1, alpha2
-
-
 def linear_map_to(val,
                   source_domain_lower, source_domain_upper,
                   target_domain_lower, target_domain_upper):
@@ -55,6 +18,19 @@ def linear_map_to(val,
 
 class PrinterCommander:
     def __init__(self):
+        # printer physical parameters:
+        self.R1 = 115  # left arm length
+        self.R2 = 115
+        self.l1 = 155  # left wire length
+        self.l2 = 155
+        self.D = 272  # distance of motor axles
+
+        # working area
+        self.width = 80
+        self.height = 80
+        self.x_min = (self.D - self.width) / 2.0
+        self.y_min = -20
+
         self.curr_alpha1 = 0.0
         self.curr_alpha2 = 0.0
 
@@ -63,6 +39,47 @@ class PrinterCommander:
         print(text)
         pass
 
+    @property
+    def workspace_width(self):
+        return self.width
+
+    @property
+    def workspace_height(self):
+        return self.height
+
+    def getAlphas(self, x: float, y: float) -> typing.Tuple[float, float]:
+        """x,y in printer coordinates, return: degrees"""
+
+
+        # printer physical parameters:
+        R1 = self.R1
+        R2 = self.R2
+        l1 = self.l1
+        l2 = self.l2
+        D = self.D
+
+        #
+        x = x + self.x_min
+        y = y + self.y_min
+        print(f"x,y: {x:3.5f} {y:3.5f}", end=' ')
+
+        # formulae valid for angles in [0, 180deg] (practically meaningful: [0, ~100deg])
+        ca1 = (x * (R1 ** 2 - l1 ** 2 + x ** 2 + y ** 2) + y * math.sqrt(
+            (-R1 ** 2 + 2 * R1 * l1 - l1 ** 2 + x ** 2 + y ** 2) * (
+                    R1 ** 2 + 2 * R1 * l1 + l1 ** 2 - x ** 2 - y ** 2))) / (2 * R1 * (x ** 2 + y ** 2))
+        sa1 = math.sqrt(1 - ca1 ** 2)
+
+        ca2 = (y * math.sqrt((-D ** 2 + 2 * D * x + R2 ** 2 + 2 * R2 * l2 + l2 ** 2 - x ** 2 - y ** 2) * (
+                D ** 2 - 2 * D * x - R2 ** 2 + 2 * R2 * l2 - l2 ** 2 + x ** 2 + y ** 2)) + (D - x) * (
+                       D ** 2 - 2 * D * x + R2 ** 2 - l2 ** 2 + x ** 2 + y ** 2)) / (
+                      2 * R2 * (D ** 2 - 2 * D * x + x ** 2 + y ** 2))
+        sa2 = math.sqrt(1 - ca2 ** 2)
+
+        alpha1 = math.atan2(sa1, ca1) / math.pi * 180
+        alpha2 = math.atan2(sa2, ca2) / math.pi * 180  # by our convention positive is up (as opposed to math)
+        print(f"alpha1: {alpha1:.5f} alpha2: {alpha2:.5f}")
+        return alpha1, alpha2
+
     def move_to_alphas(self, alpha1_deg: float, alpha2_deg: float):
         # alpha1, alpha2 = alphas_deg
         print(f'requested\t l{alpha1_deg - self.curr_alpha1}r{alpha2_deg - self.curr_alpha2}')
@@ -70,17 +87,16 @@ class PrinterCommander:
         self.serial.write(f'l{alpha1_deg - self.curr_alpha1}r{alpha2_deg - self.curr_alpha2}'.encode('ascii'))
         text = self.serial.readline().decode("ascii")
         print(text)
-        actual_left_angle_delta = float(text[2:])
-        text = self.serial.readline().decode("ascii")
-        print(text)
-        actual_right_angle_delta = float(text[2:])
+        left_str, right_str = text.split()
+        actual_left_angle_delta = float(left_str[2:])
+        actual_right_angle_delta = float(right_str[2:])
 
         print(f'actual\t\t l{actual_left_angle_delta}r{actual_right_angle_delta}')
         self.curr_alpha1 = self.curr_alpha1 + actual_left_angle_delta
         self.curr_alpha2 = self.curr_alpha2 + actual_right_angle_delta
 
     def move_to_xy(self, x: float, y: float):
-        alphas = getAlphas(x, y)
+        alphas = self.getAlphas(x, y)
         self.move_to_alphas(*alphas)
 
     def reset_head(self):
@@ -88,10 +104,13 @@ class PrinterCommander:
 
     def set_rpm(self, rpm: float):
         self.serial.write(f's{rpm}'.encode('ascii'))
+        text = self.serial.readline().decode("ascii") # need to empty buffer
+        print(text)
 
     def send_serial_command(self, command: str):
         self.serial.write(command.encode('ascii'))
-
+        text = self.serial.readline().decode("ascii")
+        print(text)
 
 class DrawingProcess(Thread):
     def __init__(self, printer: PrinterCommander, stop_event: Event):
@@ -101,14 +120,14 @@ class DrawingProcess(Thread):
         self.drawn_points = Queue()
 
     def run(self):
-        interpolator = GCodeInterpolator(read_gcode_file("../text.ngc"), max_point_distance_mm=1)
-        for point in interpolator.xy_list_interpolated:
+        self.printer.set_rpm(300)
+        interpolator = GCodeInterpolator(read_gcode_file("../kor.ngc"), max_point_distance_mm=1)
+        for point in interpolator.xy_list_raw:
             if self.stop_event.is_set():
                 return
-            x = point[0] + target_x_range[0]
-            y = point[1] + target_y_range[0]
-            alphas = getAlphas(x, y)
-            self.printer.move_to_alphas(*alphas)
+            x = point[0]
+            y = point[1]
+            self.printer.move_to_xy(x, y)
             self.drawn_points.put((x, y))
 
 
@@ -139,14 +158,14 @@ class App(tk.Tk):
 
     def target_xy(self, screen_x, screen_y):
         return (
-            linear_map_to(screen_x, 0, self.canvas_width, target_x_range[0], target_x_range[1]),
-            linear_map_to(screen_y, 0, self.canvas_height, target_y_range[0], target_y_range[1])
+            linear_map_to(screen_x, 0, self.canvas_width, 0, self.printer.workspace_width),
+            linear_map_to(screen_y, 0, self.canvas_height, 0, self.printer.workspace_height)
         )
 
     def screen_xy(self, printer_x, printer_y):
         return (
-            linear_map_to(printer_x, target_x_range[0], target_x_range[1], 0, self.canvas_width),
-            linear_map_to(printer_y, target_y_range[0], target_y_range[1], 0, self.canvas_height)
+            linear_map_to(printer_x, 0, self.printer.workspace_width, 0, self.canvas_width),
+            linear_map_to(printer_y, 0, self.printer.workspace_width, 0, self.canvas_height)
         )
 
     def put_marker(self, x, y, **kwargs):
@@ -185,8 +204,10 @@ class App(tk.Tk):
                                 height=self.canvas_height, borderwidth=0, highlightthickness=0)
         self.canvas.create_rectangle(0, 0, self.canvas_width - 1, self.canvas_height - 1)
 
-        self.canvas.bind('<Button-1>', self.canvas_click)
-        self.canvas.bind('<Button1-Motion>', self.canvas_click)
+        self.canvas.bind('<ButtonPress-1>', self.canvas_click)
+        # self.canvas.bind('<Button1-Motion>', self.canvas_click)
+        # ^todo: BUG: button release not detected while printer head moving -> phantom move events. solution: separate thread for printer
+
         self.canvas.grid(column=0, row=0, sticky=tk.NSEW, padx=10, pady=10)
 
         self.drawing_area_frame.grid(column=0, row=0, sticky=tk.NSEW, padx=10, pady=10)

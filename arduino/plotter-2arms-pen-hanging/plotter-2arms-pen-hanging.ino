@@ -38,12 +38,13 @@ void loop() {
         int speed = int(incomingString.substring(1).toDouble()); // expected double for future improvements
         motorLeft.setSpeed(speed);
         motorRight.setSpeed(speed);
-        Serial.print("s"); Serial.println(speed, 8);
+        Serial.print("s"); Serial.println(double(speed), 8);
         return;
     }
     const int rInd = incomingString.indexOf('r');
     const double ldegrees = incomingString.substring(1, rInd).toDouble();
     const int lsteps = degreesToSteps(ldegrees);
+    //motorLeft.step(lsteps);
 
     const double rdegrees = incomingString.substring(rInd + 1).toDouble();
     const int rsteps = degreesToSteps(rdegrees);
@@ -65,11 +66,11 @@ void loop() {
     } 
     motors[smallerIndex]->step(steps[smallerIndex] - sgn(steps[smallerIndex]) * minStepsTaken);
 
-    //return actual angle deltas in degrees (!= requested due to finite step resolution)
+    //return actual angle deltas in degrees (!= requested due to 
     Serial.print("dl");
-    Serial.println(stepsToDegrees(lsteps), 8);
-    Serial.print("dr");
-    Serial.println(stepsToDegrees(rsteps), 8);
+    Serial.print(String(stepsToDegrees(lsteps), 8));
+    Serial.print(" dr");
+    Serial.println(String(stepsToDegrees(rsteps), 8));
   }
 
 }

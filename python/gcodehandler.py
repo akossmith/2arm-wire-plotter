@@ -24,6 +24,7 @@ class GCodeInterpolator:
 
         only_command_lines = filter(lambda l: len(l) > 0 and l[0].upper() == "G", gcode_instruction_list)
         comments_stripped = map(lambda l: re.sub(r"\(.*?\)", "", l), only_command_lines)
+        comments_stripped = map(lambda l: re.sub(r";.*?$", "", l), only_command_lines)
         upper_cased = map(lambda l: l.upper(), comments_stripped)
         self.gcode_instruction_lines = list(upper_cased)
 
@@ -31,13 +32,18 @@ class GCodeInterpolator:
 
     @staticmethod
     def coords(line):
-        assert line[0].upper() == "G"
+        # assert line[0].upper() == "G0"
 
         words = line.split()
-        return {word[0].upper(): float(word[1:]) for word in words[1:]}
+        try:
+            return {word[0].upper(): float(word[1:]) for word in words[1:]}
+        except Exception:
+            print(words)
+            return {} #todo: fix this
 
     @staticmethod
     def command(line):
+        # todo: change representation: (letter, number)
         words = line.split()
         return words[0].upper()
 
@@ -48,7 +54,7 @@ class GCodeInterpolator:
         curr_point = {}
         point_list = []
         for line in self.gcode_instruction_lines:
-            if GCodeInterpolator.command(line) in ["G00", "G01", "G02", "G03"]:
+            if GCodeInterpolator.command(line) in ["G00", "G01", "G02", "G03", "G0", "G1", "G2", "G3"]: #todo: fix quick hack
                 coords = GCodeInterpolator.coords(line)
                 curr_point = {**curr_point, **coords}  # merging
                 # print(f"({curr_x},{curr_y}),", end='')
