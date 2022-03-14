@@ -1,0 +1,52 @@
+g00 x0 y0
+g01 x80 y0
+g01 x80 y80
+g01 x0 y80
+g01 x0 y0
+g01 x0 y80
+g01 x80 y80
+g01 x80 y0
+g01 x0 y0
+
+g01 x10 y10
+g01 x70 y10
+g01 x70 y70
+g01 x10 y70
+g01 x10 y10
+g01 x10 y70
+g01 x70 y70
+g01 x70 y10
+g01 x10 y10
+
+g01 x20 y20
+g01 x60 y20
+g01 x60 y60
+g01 x20 y60
+g01 x20 y20
+g01 x20 y60
+g01 x60 y60
+g01 x60 y20
+g01 x20 y20
+
+g01 x30 y30
+g01 x50 y30
+g01 x50 y50
+g01 x30 y50
+g01 x30 y30
+g01 x30 y50
+g01 x50 y50
+g01 x50 y30
+g01 x30 y30
+
+g01 x0 y0
+;horizontal
+g01 x40 y0
+g01 x40 y80
+g01 x40 y0
+g01 x40 y80
+
+;vertical
+g01 x0 y40
+g01 x80 y40
+g01 x0 y40
+g01 x80 y40
