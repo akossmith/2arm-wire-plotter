@@ -74,7 +74,7 @@ class GCodeInterpolator:
 
     @property
     def xy_list_interpolated(self) -> typing.List[typing.Tuple[float, float]]:
-        curr_point = {}
+        curr_point = {"X": 0, "Y": 0}
         point_list = []
         for line in self.gcode_instruction_lines:
             command = GCodeInterpolator.command(line)
@@ -83,10 +83,32 @@ class GCodeInterpolator:
             if "X" not in coords and "Y" not in coords:  # no x,y change, and we have no z axis
                 continue
 
-            if command.letter == "G" and (command.number in [0, 1]):  # todo: linear interpolation !
+            if command == Command("G", 0):
+                curr_point = {**curr_point, **coords}
+                point_list.append((curr_point['X'], curr_point['Y']))
+            elif command.letter == "G" and (command.number in [1]):  # todo: linear interpolation !
+                x = coords["X"]
+                y = coords["Y"]
+                curr_x = curr_point['X']
+                curr_y = curr_point['Y']
+
+                dvx = x - curr_x
+                dvy = y - curr_y
+                dv_norm = math.sqrt(dvx**2 + dvy**2)
+                dvx_normed = dvx / dv_norm
+                dvy_normed = dvy / dv_norm
+
+                curr_len = 0.0
+                while curr_len < dv_norm:
+                    new_x = curr_x + dvx_normed * curr_len
+                    new_y = curr_y + dvy_normed * curr_len
+                    curr_len += self.max_point_dist
+                    point_list.append((new_x, new_y))
+                point_list.append((x, y))
+
                 curr_point = {**curr_point, **coords}
                 # print(f"({curr_x},{curr_y}),", end='')
-                point_list.append((curr_point['X'], curr_point['Y']))
+                # point_list.append((curr_point['X'], curr_point['Y']))
 
             elif command.letter == "G" and (command.number in [2, 3]):
                 cw_dir = command.number == 2
@@ -129,7 +151,6 @@ class GCodeInterpolator:
                 point_list.append((x, y))
                 curr_point = {**curr_point, **coords}
 
-        point_list = itertools.dropwhile(lambda d: d == {}, point_list)
         return list(remove_duplicates(point_list))
 
     @property
