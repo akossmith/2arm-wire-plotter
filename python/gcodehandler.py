@@ -2,6 +2,7 @@ import math
 import re
 import typing
 import itertools
+from collections import namedtuple
 
 
 def read_gcode_file(filename: str) -> typing.Iterable[str]:
@@ -16,6 +17,7 @@ T = typing.TypeVar('T')
 def remove_duplicates(iterable: typing.Iterable[T]) -> typing.Iterable[T]:
     return (key for key, _ in itertools.groupby(iterable))
 
+Command = namedtuple('Command', ['letter', 'number'])
 
 class GCodeInterpolator:
     def __init__(self,
@@ -24,7 +26,7 @@ class GCodeInterpolator:
 
         only_command_lines = filter(lambda l: len(l) > 0 and l[0].upper() == "G", gcode_instruction_list)
         comments_stripped = map(lambda l: re.sub(r"\(.*?\)", "", l), only_command_lines)
-        comments_stripped = map(lambda l: re.sub(r";.*?$", "", l), only_command_lines)
+        comments_stripped = map(lambda l: re.sub(r";.*?$", "", l), comments_stripped)
         upper_cased = map(lambda l: l.upper(), comments_stripped)
         self.gcode_instruction_lines = list(upper_cased)
 
@@ -42,10 +44,10 @@ class GCodeInterpolator:
             return {} #todo: fix this
 
     @staticmethod
-    def command(line):
+    def command(line) -> Command: # typing.Tuple[str, int]:
         # todo: change representation: (letter, number)
-        words = line.split()
-        return words[0].upper()
+        comm = line.split()[0]
+        return Command(comm[0].upper(), int(comm[1:]))
 
     # todo: filter for z > 0 ?
 
@@ -54,7 +56,8 @@ class GCodeInterpolator:
         curr_point = {}
         point_list = []
         for line in self.gcode_instruction_lines:
-            if GCodeInterpolator.command(line) in ["G00", "G01", "G02", "G03", "G0", "G1", "G2", "G3"]: #todo: fix quick hack
+            command = GCodeInterpolator.command(line)
+            if command.letter == "G" and command.number in [0, 1, 2, 3]:
                 coords = GCodeInterpolator.coords(line)
                 curr_point = {**curr_point, **coords}  # merging
                 # print(f"({curr_x},{curr_y}),", end='')
@@ -80,13 +83,13 @@ class GCodeInterpolator:
             if "X" not in coords and "Y" not in coords:  # no x,y change, and we have no z axis
                 continue
 
-            if command == "G00" or command == "G01":  # todo: linear interpolation !
+            if command.letter == "G" and (command.number in [0, 1]):  # todo: linear interpolation !
                 curr_point = {**curr_point, **coords}
                 # print(f"({curr_x},{curr_y}),", end='')
                 point_list.append((curr_point['X'], curr_point['Y']))
 
-            elif command in ["G02", "G03"]:
-                cw_dir = command == "G02"
+            elif command.letter == "G" and (command.number in [2, 3]):
+                cw_dir = command.number == 2
 
                 x = coords["X"]
                 y = coords["Y"]
