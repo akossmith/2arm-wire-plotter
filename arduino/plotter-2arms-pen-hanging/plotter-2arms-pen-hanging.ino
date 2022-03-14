@@ -44,7 +44,6 @@ void loop() {
     const int rInd = incomingString.indexOf('r');
     const double ldegrees = incomingString.substring(1, rInd).toDouble();
     const int lsteps = degreesToSteps(ldegrees);
-    //motorLeft.step(lsteps);
 
     const double rdegrees = incomingString.substring(rInd + 1).toDouble();
     const int rsteps = degreesToSteps(rdegrees);
