@@ -6,13 +6,13 @@ template <typename T> int sgn(T val) {
 }
 
 const double STEPS_PER_REV = 32.0;
-const double GEAR_RED = 64.0;
+const double GEAR_RED = 63.68395;
 const double STEPS_PER_OUT_REV = STEPS_PER_REV * GEAR_RED;
 
 
 // wires on pins 2-blue 3-yellow 4-orange 5-pink, same order for right motor
-Stepper motorLeft(STEPS_PER_REV, 2, 3, 4, 5);
-Stepper motorRight(STEPS_PER_REV, 9, 8, 7, 6);
+Stepper motorRight(STEPS_PER_REV, 5, 4, 3, 2);
+Stepper motorLeft(STEPS_PER_REV, 6, 7, 8, 9);
 
 int degreesToSteps(double degrees) {
   const double stepsPerDegree = STEPS_PER_OUT_REV / 360.0;
