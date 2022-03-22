@@ -19,17 +19,18 @@ def linear_map_to(val,
 class PrinterCommander:
     def __init__(self):
         # printer physical parameters:
-        self.R1 = 115  # left arm length
-        self.R2 = 115
-        self.l1 = 155  # left wire length
-        self.l2 = 155
-        self.D = 272  # distance of motor axles
+        #lego arms attached to metal wheel
+        self.R1 = 99.625 - 3 * 7.97  # 99.625 <- last hole (one hole distance is 7.97mm)
+        self.R2 = 99.625 - 3 * 7.97
+        self.l1 = 159  # left wire length
+        self.l2 = 159
+        self.D = 258.7  # distance of motor axles
 
         # working area
         self.width = 80
         self.height = 80
         self.x_min = (self.D - self.width) / 2.0
-        self.y_min = -20
+        self.y_min = 5
 
         self.curr_alpha1 = 0.0
         self.curr_alpha2 = 0.0
@@ -47,9 +48,12 @@ class PrinterCommander:
     def workspace_height(self):
         return self.height
 
+    @property
+    def current_alphas(self) -> typing.Tuple[float, float]:
+        return self.curr_alpha1, self.curr_alpha2
+
     def getAlphas(self, x: float, y: float) -> typing.Tuple[float, float]:
         """x,y in printer coordinates, return: degrees"""
-
 
         # printer physical parameters:
         R1 = self.R1
@@ -58,7 +62,10 @@ class PrinterCommander:
         l2 = self.l2
         D = self.D
 
-        #
+        # x = -x + self.x_min + self.width # mirroring
+        # x = x * 0.8  # scaling
+        # y = y * 0.8 
+
         x = x + self.x_min
         y = y + self.y_min
         print(f"x,y: {x:3.5f} {y:3.5f}", end=' ')
@@ -82,18 +89,18 @@ class PrinterCommander:
 
     def move_to_alphas(self, alpha1_deg: float, alpha2_deg: float):
         # alpha1, alpha2 = alphas_deg
-        print(f'requested\t l{alpha1_deg - self.curr_alpha1}r{alpha2_deg - self.curr_alpha2}')
+        print(f'requested\t l{alpha1_deg}r{alpha2_deg}')
 
-        self.serial.write(f'l{alpha1_deg - self.curr_alpha1}r{alpha2_deg - self.curr_alpha2}'.encode('ascii'))
+        self.serial.write(f'move l{alpha1_deg} r{alpha2_deg}'.encode('ascii'))
         text = self.serial.readline().decode("ascii")
         print(text)
         left_str, right_str = text.split()
-        actual_left_angle_delta = float(left_str[2:])
-        actual_right_angle_delta = float(right_str[2:])
+        actual_left_angle = float(left_str[2:])
+        actual_right_angle = float(right_str[2:])
 
-        print(f'actual\t\t l{actual_left_angle_delta}r{actual_right_angle_delta}')
-        self.curr_alpha1 = self.curr_alpha1 + actual_left_angle_delta
-        self.curr_alpha2 = self.curr_alpha2 + actual_right_angle_delta
+        print(f'actual\t\t l{actual_left_angle}r{actual_right_angle}')
+        self.curr_alpha1 = actual_left_angle
+        self.curr_alpha2 = actual_right_angle
 
     def move_to_xy(self, x: float, y: float):
         alphas = self.getAlphas(x, y)
@@ -103,7 +110,7 @@ class PrinterCommander:
         self.move_to_alphas(0, 0)
 
     def set_rpm(self, rpm: float):
-        self.serial.write(f's{rpm}'.encode('ascii'))
+        self.serial.write(f'setSpeed {rpm}'.encode('ascii'))
         text = self.serial.readline().decode("ascii") # need to empty buffer
         print(text)
 
@@ -117,12 +124,12 @@ class DrawingProcess(Thread):
         super().__init__()
         self.stop_event = stop_event
         self.printer = printer
-        self.drawn_points = Queue()
+        self.drawn_points = Queue() # todo: make this exist in main thread (bug: last segment not displayed on screen)
 
     def run(self):
-        self.printer.set_rpm(300)
-        interpolator = GCodeInterpolator(read_gcode_file("../kor.ngc"), max_point_distance_mm=1)
-        for point in interpolator.xy_list_raw:
+        self.printer.set_rpm(200)
+        interpolator = GCodeInterpolator(read_gcode_file("../szovegszoveg.gcode"), max_point_distance_mm=0.1)
+        for point in interpolator.xy_list_interpolated:
             if self.stop_event.is_set():
                 return
             x = point[0]

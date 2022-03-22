@@ -67,13 +67,13 @@ class GCodeInterpolator:
         return point_list
 
     @property
-    def xy_list_raw(self) -> typing.List[typing.Tuple[float, float]]:
+    def xy_list_raw(self) -> typing.Collection[typing.Tuple[float, float]]:
         res = remove_duplicates(map(lambda coords: (coords['X'], coords['Y']),
                                   self.raw_coord_list))
         return list(res)
 
     @property
-    def xy_list_interpolated(self) -> typing.List[typing.Tuple[float, float]]:
+    def xy_list_interpolated(self) -> typing.Collection[typing.Tuple[float, float]]:
         curr_point = {"X": 0, "Y": 0}
         point_list = []
         for line in self.gcode_instruction_lines:
@@ -95,15 +95,17 @@ class GCodeInterpolator:
                 dvx = x - curr_x
                 dvy = y - curr_y
                 dv_norm = math.sqrt(dvx**2 + dvy**2)
-                dvx_normed = dvx / dv_norm
-                dvy_normed = dvy / dv_norm
 
-                curr_len = 0.0
-                while curr_len < dv_norm:
-                    new_x = curr_x + dvx_normed * curr_len
-                    new_y = curr_y + dvy_normed * curr_len
-                    curr_len += self.max_point_dist
-                    point_list.append((new_x, new_y))
+                if dv_norm > 0.00000001:  # just Z coord change
+                    dvx_normed = dvx / dv_norm
+                    dvy_normed = dvy / dv_norm
+
+                    curr_len = 0.0
+                    while curr_len < dv_norm:
+                        new_x = curr_x + dvx_normed * curr_len
+                        new_y = curr_y + dvy_normed * curr_len
+                        curr_len += self.max_point_dist
+                        point_list.append((new_x, new_y))
                 point_list.append((x, y))
 
                 curr_point = {**curr_point, **coords}
