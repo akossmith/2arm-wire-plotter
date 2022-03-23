@@ -59,7 +59,12 @@ class MyStepper: public Stepper{
     }
 
     void zeroStepState(){
-      currStepState = 0;
+      currStepState = 0; //calibrate(0.0);
+    }
+
+    void calibrate(double angle){
+      currStepState = degreesToSteps(angle);
+      
     }
 
     long getCurrentStepState() const {
@@ -92,21 +97,33 @@ void loop() {
   if (Serial.available() > 0) {
     String incomingString = Serial.readString();
     if(incomingString.startsWith("setSpeed")){
+      
         int speed = int(incomingString.substring(String("setSpeed").length() + 1).toDouble());// expecting double for future improvements
         motorLeft.setSpeed(speed);
         motorRight.setSpeed(speed);
         Serial.print("s"); Serial.println(double(speed), 8);
-        return;
+
     }else if(incomingString.startsWith("getAlphas")){
+      
         Serial.print("alphaL");
         Serial.print(String(motorLeft.getCurrentAngleDeg(), 8));
         Serial.print(" alphaR");
         Serial.println(String(motorRight.getCurrentAngleDeg(), 8));
-        return;
+
     }else if(incomingString.startsWith("zeroAngles")){
+      
       motorLeft.zeroStepState();
       motorRight.zeroStepState();
       Serial.println("position zeroed");
+      
+    }else if(incomingString.startsWith("calibrate")){
+      
+      const double leftAngle = getCommandParam<double>(incomingString, "l", motorLeft.getCurrentAngleDeg());
+      motorLeft.calibrate(leftAngle);
+      const double rightAngle = getCommandParam<double>(incomingString, "r", motorRight.getCurrentAngleDeg());
+      motorRight.calibrate(rightAngle);
+      Serial.println("calibration done");
+      
     }else if(incomingString.startsWith("move")){
       const bool relative = incomingString.startsWith("moveRelative");
 
@@ -139,11 +156,14 @@ void loop() {
       } 
       motors[smallerIndex]->step(steps[smallerIndex] - sgn(steps[smallerIndex]) * minStepsTaken);
 
-      //return actual angle deltas in degrees (!= requested due to 
+      //return actual angles in degrees (!= requested due to finite stepper resolution)
       Serial.print("dl");
       Serial.print(String(motorLeft.getCurrentAngleDeg(), 8));
       Serial.print(" dr");
       Serial.println(String(motorRight.getCurrentAngleDeg(), 8));
+    }else{
+      Serial.print("Invalid command: ");
+      Serial.println(incomingString);
     }
 
   }

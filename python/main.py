@@ -10,13 +10,6 @@ import math
 import typing
 from gcodehandler import *
 
-def linear_map_to(val,
-                  source_domain_lower, source_domain_upper,
-                  target_domain_lower, target_domain_upper):
-    return float(val - source_domain_lower) / (source_domain_upper - source_domain_lower) * \
-           (target_domain_upper - target_domain_lower) + target_domain_lower
-
-
 class PrinterCommander:
     def __init__(self):
         # printer physical parameters:
@@ -30,14 +23,14 @@ class PrinterCommander:
         # working area
         self.width = 80
         self.height = 80
-        self.x_min = (self.D - self.width) / 2.0 - 29.6
-        self.y_min = -25
+        self.x_min = (self.D - self.width) / 2.0
+        self.y_min = 15
 
         self.curr_alpha1 = 0.0
         self.curr_alpha2 = 0.0
 
         self.serial = serial.Serial('COM5', 115200, timeout=1000, parity=serial.PARITY_NONE)
-        text = self.serial.readline()
+        text = self.serial.readline().decode("ascii")
         print(text)
         pass
 
@@ -53,7 +46,7 @@ class PrinterCommander:
     def current_alphas(self) -> typing.Tuple[float, float]:
         return self.curr_alpha1, self.curr_alpha2
 
-    def getAlphas(self, x: float, y: float) -> typing.Tuple[float, float]:
+    def __getAlphas(self, x: float, y: float) -> typing.Tuple[float, float]:
         """x,y in printer coordinates, return: degrees"""
 
         # printer physical parameters:
@@ -92,9 +85,7 @@ class PrinterCommander:
         # alpha1, alpha2 = alphas_deg
         print(f'requested\t l{alpha1_deg}r{alpha2_deg}')
 
-        self.serial.write(f'move l{alpha1_deg} r{alpha2_deg}'.encode('ascii'))
-        text = self.serial.readline().decode("ascii")
-        print(text)
+        text = self.send_serial_command(f'move l{alpha1_deg} r{alpha2_deg}')
         left_str, right_str = text.split()
         actual_left_angle = float(left_str[2:])
         actual_right_angle = float(right_str[2:])
@@ -104,21 +95,28 @@ class PrinterCommander:
         self.curr_alpha2 = actual_right_angle
 
     def move_to_xy(self, x: float, y: float):
-        alphas = self.getAlphas(x, y)
+        alphas = self.__getAlphas(x, y)
         self.move_to_alphas(*alphas)
 
     def reset_head(self):
         self.move_to_alphas(0, 0)
 
+    def calibrate(self, alpha1_deg: float, alpha2_deg: float):
+        self.send_serial_command(f"calibrate l{alpha1_deg} r{alpha2_deg}")
+        self.curr_alpha1 = alpha1_deg
+        self.curr_alpha2 = alpha2_deg
+
     def set_rpm(self, rpm: float):
-        self.serial.write(f'setSpeed {rpm}'.encode('ascii'))
-        text = self.serial.readline().decode("ascii") # need to empty buffer
-        print(text)
+        self.send_serial_command(f"setSpeed {rpm}")
 
     def zero_position(self):
-        self.serial.write(f'zeroAngles'.encode('ascii'))
-        text = self.serial.readline().decode("ascii") # need to empty buffer
+        self.send_serial_command(f'zeroAngles')
+
+    def send_serial_command(self, command: str) -> str:
+        self.serial.write(command.encode('ascii'))
+        text = self.serial.readline().decode("ascii")
         print(text)
+        return text
 
     def send_serial_command(self, command: str):
         self.serial.write(command.encode('ascii'))
@@ -126,20 +124,20 @@ class PrinterCommander:
         print(text)
 
 class DrawingProcess(Thread):
-    def __init__(self, printer: PrinterCommander, filename):
+    def __init__(self, printer: PrinterCommander, filename: str, interpolation_resolution: float):
         super().__init__()
         self.stop_event = Event()
         self.printer = printer
         self.drawn_points = Queue() # todo: make this exist in main thread (bug: last segment not displayed on screen)
-        self.filename = filename
+        self.interpolator = GCodeInterpolator(read_gcode_file(filename),
+                                              max_point_distance_mm=interpolation_resolution)
 
     def stop(self):
         self.stop_event.set()
 
     def run(self):
         self.printer.set_rpm(200)
-        interpolator = GCodeInterpolator(read_gcode_file(self.filename), max_point_distance_mm=0.2)
-        for point in interpolator.xy_list_interpolated:
+        for point in self.interpolator.xy_list_interpolated:
             if self.stop_event.is_set():
                 return
             x = point[0]
@@ -147,6 +145,11 @@ class DrawingProcess(Thread):
             self.printer.move_to_xy(x, y)
             self.drawn_points.put((x, y))
 
+def linear_map_to(val,
+                  source_domain_lower, source_domain_upper,
+                  target_domain_lower, target_domain_upper):
+    return float(val - source_domain_lower) / (source_domain_upper - source_domain_lower) * \
+           (target_domain_upper - target_domain_lower) + target_domain_lower
 
 class App(tk.Tk):
     def __init__(self, canvas_width=650, canvas_height=650):
@@ -165,8 +168,16 @@ class App(tk.Tk):
         self.curr_xy = (0, 0)
         self.printer = PrinterCommander()
 
-        self.filename = tkinter.StringVar(value="../gcode/vertical.gcode")
-        self.drawing_process = DrawingProcess(self.printer, self.filename.get())
+        try:
+            with open("lastAlphas.txt", "r+") as f:
+                alpha1, alpha2 = map(lambda x: float(x), f.readline().split())
+                self.printer.calibrate(alpha1, alpha2)
+                f.truncate(0)
+        except:
+            pass
+
+        self.filename = tkinter.StringVar(value="../gcode/test.gcode")
+        self.drawing_process = DrawingProcess(self.printer, self.filename.get(), 1)
 
         self.create_body_frame()
         self.create_command_frame()
@@ -174,13 +185,18 @@ class App(tk.Tk):
         self.protocol("WM_DELETE_WINDOW", self.on_closing)
 
     def on_closing(self):
-        if tk.messagebox.askokcancel("Reset Head", "Do you want to reset printer head?"):
+        if self.drawing_process.is_alive():
+            self.drawing_process.stop()
+            self.drawing_process.join()
+        if tk.messagebox.askyesno("Reset Head", "Do you want to reset printer head?", default="no"):
             self.printer.reset_head()
+        with open("lastAlphas.txt", "w") as f:
+            a1, a2 = self.printer.current_alphas
+            f.write(f"{a1} {a2}")
         self.destroy()
 
-
     def start_drawing(self):
-        self.drawing_process = DrawingProcess(self.printer, self.filename )
+        self.drawing_process = DrawingProcess(self.printer, self.filename.get(), interpolation_resolution=0.02)
         self.drawing_process.start()
         self.monitor_drawing_process()
 
@@ -205,11 +221,13 @@ class App(tk.Tk):
         return self.canvas.create_oval(x - r, y - r, x + r, y + r, **kwargs)
 
     def recall_previous_serial_command(self, event):
-        self.current_serial_command.set(self.previous_serial_command)
+        self.current_serial_command.set("")
+        self.serial_command_entry.insert(0, self.previous_serial_command)
 
     def send_serial_command(self, event):
         self.previous_serial_command = self.current_serial_command.get()
         self.printer.send_serial_command(self.current_serial_command.get())
+        self.current_serial_command.set("")
         pass
 
     def reset_head(self):

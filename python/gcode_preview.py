@@ -35,9 +35,9 @@ plt.plot(xs, ys)
 plt.show()
 
 interpolator = GCodeInterpolator(
-""""G03 X41.959031 Y44.330170 Z-0.125000 I-2.211116 J-0.987637
+""""G00 X41.959031 Y44.330170 Z-0.125000 I-2.211116 J-0.987637
 G03 X41.714921 Y44.596500 Z-0.125000 I-0.924568 J-0.602392
 G03 X41.609422 Y44.632900 Z-0.125000 I-0.105499 J-0.134688
 G01 X41.609375 Y44.632850 Z-0.125000
-""", 1)
+""".split("\n"), 1)
 refined_point_list = interpolator.xy_list_interpolated

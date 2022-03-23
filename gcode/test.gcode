@@ -1,4 +1,5 @@
 g00 x0 y0
+
 g01 x80 y0
 g01 x80 y80
 g01 x0 y80
@@ -39,13 +40,13 @@ g01 x50 y30
 g01 x30 y30
 
 g01 x0 y0
-;horizontal
-g01 x40 y0
-g01 x40 y80
-g01 x40 y0
-g01 x40 y80
-
 ;vertical
+g01 x40 y0
+g01 x40 y80
+g01 x40 y0
+g01 x40 y80
+
+;horizontal
 g01 x0 y40
 g01 x80 y40
 g01 x0 y40
