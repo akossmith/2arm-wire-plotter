@@ -106,6 +106,7 @@ void loop() {
     }else if(incomingString.startsWith("zeroAngles")){
       motorLeft.zeroStepState();
       motorRight.zeroStepState();
+      Serial.println("position zeroed");
     }else if(incomingString.startsWith("move")){
       const bool relative = incomingString.startsWith("moveRelative");
 
