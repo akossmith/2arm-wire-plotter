@@ -1,6 +1,7 @@
 import tkinter
 import tkinter as tk
 from tkinter import ttk
+from tkinter import messagebox
 from threading import Thread, Event
 import time
 import serial
@@ -29,8 +30,8 @@ class PrinterCommander:
         # working area
         self.width = 80
         self.height = 80
-        self.x_min = (self.D - self.width) / 2.0
-        self.y_min = 5
+        self.x_min = (self.D - self.width) / 2.0 - 29.6
+        self.y_min = -25
 
         self.curr_alpha1 = 0.0
         self.curr_alpha2 = 0.0
@@ -114,21 +115,30 @@ class PrinterCommander:
         text = self.serial.readline().decode("ascii") # need to empty buffer
         print(text)
 
+    def zero_position(self):
+        self.serial.write(f'zeroAngles'.encode('ascii'))
+        text = self.serial.readline().decode("ascii") # need to empty buffer
+        print(text)
+
     def send_serial_command(self, command: str):
         self.serial.write(command.encode('ascii'))
         text = self.serial.readline().decode("ascii")
         print(text)
 
 class DrawingProcess(Thread):
-    def __init__(self, printer: PrinterCommander, stop_event: Event):
+    def __init__(self, printer: PrinterCommander, filename):
         super().__init__()
-        self.stop_event = stop_event
+        self.stop_event = Event()
         self.printer = printer
         self.drawn_points = Queue() # todo: make this exist in main thread (bug: last segment not displayed on screen)
+        self.filename = filename
+
+    def stop(self):
+        self.stop_event.set()
 
     def run(self):
         self.printer.set_rpm(200)
-        interpolator = GCodeInterpolator(read_gcode_file("../szovegszoveg.gcode"), max_point_distance_mm=0.1)
+        interpolator = GCodeInterpolator(read_gcode_file(self.filename), max_point_distance_mm=0.2)
         for point in interpolator.xy_list_interpolated:
             if self.stop_event.is_set():
                 return
@@ -139,29 +149,44 @@ class DrawingProcess(Thread):
 
 
 class App(tk.Tk):
-    def __init__(self, canvas_width=500, canvas_height=500):
+    def __init__(self, canvas_width=650, canvas_height=650):
         super().__init__()
 
         self.canvas_width = canvas_width
         self.canvas_height = canvas_height
 
-        self.title('Webpage Download')
-        self.geometry('600x600')
+        self.title('Plotter')
+        self.geometry(f"{canvas_width + 20}x{canvas_height + 100}")
         self.resizable(0, 0)
 
         self.previous_serial_command = ""
         self.current_serial_command = tkinter.StringVar()
 
+        self.curr_xy = (0, 0)
+        self.printer = PrinterCommander()
+
+        self.filename = tkinter.StringVar(value="../gcode/vertical.gcode")
+        self.drawing_process = DrawingProcess(self.printer, self.filename.get())
+
         self.create_body_frame()
         self.create_command_frame()
 
-        self.printer = PrinterCommander()
+        self.protocol("WM_DELETE_WINDOW", self.on_closing)
 
-        self.stop_event = Event()
-        self.drawing_process = DrawingProcess(self.printer, self.stop_event)
+    def on_closing(self):
+        if tk.messagebox.askokcancel("Reset Head", "Do you want to reset printer head?"):
+            self.printer.reset_head()
+        self.destroy()
+
+
+    def start_drawing(self):
+        self.drawing_process = DrawingProcess(self.printer, self.filename )
         self.drawing_process.start()
-        self.curr_xy = (0, 0)
         self.monitor_drawing_process()
+
+    def cancel_drawing(self):
+        self.drawing_process.stop()
+        pass
 
     def target_xy(self, screen_x, screen_y):
         return (
@@ -187,10 +212,6 @@ class App(tk.Tk):
         self.printer.send_serial_command(self.current_serial_command.get())
         pass
 
-    def cancel_drawing(self):
-        self.stop_event.set()
-        pass
-
     def reset_head(self):
         if self.drawing_process.is_alive():
             return
@@ -205,8 +226,8 @@ class App(tk.Tk):
         self.printer.move_to_xy(*self.target_xy(event.x, event.y))
 
     def create_body_frame(self):
-        self.drawing_area_frame = ttk.Frame(self)
-        self.canvas = tk.Canvas(self.drawing_area_frame,
+        # self.drawing_area_frame = ttk.Frame(self)
+        self.canvas = tk.Canvas(self,
                                 width=self.canvas_width,
                                 height=self.canvas_height, borderwidth=0, highlightthickness=0)
         self.canvas.create_rectangle(0, 0, self.canvas_width - 1, self.canvas_height - 1)
@@ -217,31 +238,47 @@ class App(tk.Tk):
 
         self.canvas.grid(column=0, row=0, sticky=tk.NSEW, padx=10, pady=10)
 
-        self.drawing_area_frame.grid(column=0, row=0, sticky=tk.NSEW, padx=10, pady=10)
+        # self.drawing_area_frame.grid(column=0, row=0, sticky=tk.NSEW, padx=10, pady=0)
 
     def create_command_frame(self):
-        self.command_frame = ttk.Frame(self)
+        self.controls_frame = ttk.Frame(self)
+        self.controls_frame.grid(column=0, row=1, sticky=tk.EW)
 
-        self.command_frame.columnconfigure(0, weight=5)
-        self.command_frame.columnconfigure(1, weight=2)
-        self.command_frame.columnconfigure(2, weight=2)
+        self.drawing_controls_frame = ttk.LabelFrame(self.controls_frame, text="Drawing process")
+        self.drawing_controls_frame.grid(column=0, row=0, sticky=tk.W, padx=10, pady=0)
 
-        self.serial_command_entry = ttk.Entry(self.command_frame,
+        self.file_name_entry = ttk.Entry(self.drawing_controls_frame,
+                                              textvariable=self.filename,
+                                              width=50)
+        self.file_name_entry.pack(fill=tk.X)
+
+        self.start_button = ttk.Button(self.drawing_controls_frame, text='Start')
+        self.start_button['command'] = self.start_drawing
+        self.start_button.pack(fill=tk.BOTH, side=tk.RIGHT)
+
+        self.cancel_button = ttk.Button(self.drawing_controls_frame, text='Cancel')
+        self.cancel_button['command'] = self.cancel_drawing
+        self.cancel_button.pack(fill=tk.BOTH, side=tk.RIGHT)
+
+        self.printer_controls_frame = ttk.LabelFrame(self.controls_frame, text="Printer Controls")
+        self.printer_controls_frame.grid(column=1, row=0, sticky=tk.NW, padx=10, pady=0)
+
+
+        self.serial_command_entry = ttk.Entry(self.printer_controls_frame,
                                               textvariable=self.current_serial_command,
-                                              width=40)
-        self.serial_command_entry.grid(column=0, row=0, sticky=tk.E)
+                                              width=50)
+        self.serial_command_entry.pack(fill=tk.X)
         self.serial_command_entry.bind('<Return>', self.send_serial_command, add='+')
         self.serial_command_entry.bind('<Up>', self.recall_previous_serial_command)
 
-        self.cancel_button = ttk.Button(self.command_frame, text='Cancel Drawing Process')
-        self.cancel_button['command'] = self.cancel_drawing
-        self.cancel_button.grid(column=1, row=0, sticky=tk.E)
-
-        self.reset_button = ttk.Button(self.command_frame, text='Reset Head')
+        self.reset_button = ttk.Button(self.printer_controls_frame, text='Reset Head')
         self.reset_button['command'] = self.reset_head
-        self.reset_button.grid(column=2, row=0, sticky=tk.E)
+        self.reset_button.pack(fill=tk.BOTH, side=tk.RIGHT)
 
-        self.command_frame.grid(column=0, row=1, sticky=tk.NSEW, padx=10, pady=10)
+        self.reset_button = ttk.Button(self.printer_controls_frame, text='Zero Angles')
+        self.reset_button['command'] = self.printer.zero_position
+        self.reset_button.pack(fill=tk.BOTH, side=tk.RIGHT)
+
 
     def monitor_drawing_process(self):
         if self.drawing_process.is_alive():

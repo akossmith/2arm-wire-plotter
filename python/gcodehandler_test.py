@@ -8,7 +8,7 @@ class TestCaseWithAllAlmostEqual(unittest.TestCase):
                               expected: typing.Sequence[typing.Sequence[float]],
                               actual: typing.Sequence[typing.Sequence[float]],
                               *args,
-                              **kwargs ):
+                              **kwargs):
         def flatten(arr):
             return (elem for pair in arr for elem in pair)
 
@@ -77,7 +77,6 @@ class GCodeInterpolatorInterpolationTest(TestCaseWithAllAlmostEqual):
         ]
         max_point_dist = 1
         interp = GCodeInterpolator(text, max_point_dist)
-        print(interp.xy_list_interpolated)
         expected = [
             (1, 1),
             (1.2448348762192545, 1.958851077208406),

@@ -22,7 +22,7 @@ Command = namedtuple('Command', ['letter', 'number'])
 class GCodeInterpolator:
     def __init__(self,
                  gcode_instruction_list: typing.Iterable[str],
-                 max_point_distance_mm: int = 1):
+                 max_point_distance_mm: float = 1):
 
         only_command_lines = filter(lambda l: len(l) > 0 and l[0].upper() == "G", gcode_instruction_list)
         comments_stripped = map(lambda l: re.sub(r"\(.*?\)", "", l), only_command_lines)
@@ -74,7 +74,7 @@ class GCodeInterpolator:
 
     @property
     def xy_list_interpolated(self) -> typing.Collection[typing.Tuple[float, float]]:
-        curr_point = {"X": 0, "Y": 0}
+        curr_point = {}
         point_list = []
         for line in self.gcode_instruction_lines:
             command = GCodeInterpolator.command(line)
@@ -83,10 +83,12 @@ class GCodeInterpolator:
             if "X" not in coords and "Y" not in coords:  # no x,y change, and we have no z axis
                 continue
 
-            if command == Command("G", 0):
+            if command.letter == "G" and \
+                    (command.number == 0
+                     or any(coord not in curr_point for coord in ["X", "Y"])):  # no meaningful current point yet
                 curr_point = {**curr_point, **coords}
                 point_list.append((curr_point['X'], curr_point['Y']))
-            elif command.letter == "G" and (command.number in [1]):  # todo: linear interpolation !
+            elif command.letter == "G" and (command.number in [1]):
                 x = coords["X"]
                 y = coords["Y"]
                 curr_x = curr_point['X']
