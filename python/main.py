@@ -1,3 +1,4 @@
+import itertools
 import tkinter
 import tkinter as tk
 from tkinter import ttk
@@ -113,37 +114,62 @@ class PrinterCommander:
         self.send_serial_command(f'zeroAngles')
 
     def send_serial_command(self, command: str) -> str:
-        self.serial.write(command.encode('ascii'))
+        self.serial.write((command + "\n").encode('ascii'))
         text = self.serial.readline().decode("ascii")
         print(text)
         return text
 
-    def send_serial_command(self, command: str):
-        self.serial.write(command.encode('ascii'))
-        text = self.serial.readline().decode("ascii")
-        print(text)
+    def burst(self, xys: typing.Iterable[typing.Tuple[float, float]]):
+        def serializePointList(point_list: typing.Iterable[typing.Tuple[float, float]]):
+            return "".join(f"{alpha1:06.2f}{alpha2:06.2f}"
+                           for alpha1, alpha2 in point_list)
+
+        alphass = (self.__getAlphas(x, y) for x, y in xys)
+        text = self.send_serial_command("bur" + serializePointList(alphass))
+        left_str, right_str = text.split()
+        actual_left_angle = float(left_str[2:])  # todo: unify this
+        actual_right_angle = float(right_str[2:])
+
+        print(f'actual\t\t l{actual_left_angle}r{actual_right_angle}')
+        self.curr_alpha1 = actual_left_angle
+        self.curr_alpha2 = actual_right_angle
 
 class DrawingProcess(Thread):
-    def __init__(self, printer: PrinterCommander, filename: str, interpolation_resolution: float):
+    def __init__(self,
+                 printer: PrinterCommander,
+                 filename: str,
+                 interpolation_resolution: float):
         super().__init__()
         self.stop_event = Event()
         self.printer = printer
-        self.drawn_points = Queue() # todo: make this exist in main thread (bug: last segment not displayed on screen)
+        self.drawn_points = Queue()  # todo: make this exist in main thread (bug: last segment not displayed on screen)
         self.interpolator = GCodeInterpolator(read_gcode_file(filename),
                                               max_point_distance_mm=interpolation_resolution)
+        self.print = self.regular_printing
 
     def stop(self):
         self.stop_event.set()
 
     def run(self):
-        self.printer.set_rpm(200)
-        for point in self.interpolator.xy_list_interpolated:
+        self.printer.set_rpm(350)
+        self.print()
+
+    def regular_printing(self):
+        for x, y in self.interpolator.xy_list_interpolated:
             if self.stop_event.is_set():
                 return
-            x = point[0]
-            y = point[1]
             self.printer.move_to_xy(x, y)
             self.drawn_points.put((x, y))
+
+    def burst_printing(self):
+        BURST_SIZE = 5
+        bursts = zip(*(self.interpolator.xy_list_interpolated[i::BURST_SIZE] for i in range(BURST_SIZE)))
+        for burst in bursts:
+            if self.stop_event.is_set():
+                return
+            self.printer.burst(burst)
+            for x, y in burst:
+                self.drawn_points.put((x, y))
 
 def linear_map_to(val,
                   source_domain_lower, source_domain_upper,
@@ -196,7 +222,7 @@ class App(tk.Tk):
         self.destroy()
 
     def start_drawing(self):
-        self.drawing_process = DrawingProcess(self.printer, self.filename.get(), interpolation_resolution=0.02)
+        self.drawing_process = DrawingProcess(self.printer, self.filename.get(), interpolation_resolution=0.1)
         self.drawing_process.start()
         self.monitor_drawing_process()
 
