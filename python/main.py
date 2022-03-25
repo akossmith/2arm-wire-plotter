@@ -13,7 +13,7 @@ from gcodehandler import *
 
 
 class PrinterCommander:
-    BURST_SIZE = 16  # each point is 2 bytes -> 16*2*2=64=Arduino serial buffer size
+    BURST_SIZE = 15  # each point is 2 bytes -> 15*2*2+4(checksum)=64=Arduino serial buffer size
 
     def __init__(self):
         # printer physical parameters:
@@ -62,13 +62,13 @@ class PrinterCommander:
 
         # x = -x + self.x_min + self.width # mirroring
         # x = x * 0.8  # scaling
-        # y = y * 0.8 
+        # y = y * 0.8
 
         x = x + self.x_min
         y = y + self.y_min
         print(f"x,y: {x:3.5f} {y:3.5f}", end=' ')
 
-        # formulae valid for angles in [0, 180deg] (practically meaningful: [0, ~100deg])
+        # formulae valid for angles in [0, 180deg] (practically meaningful: [0, ~130deg])
         ca1 = (x * (R1 ** 2 - l1 ** 2 + x ** 2 + y ** 2) + y * math.sqrt(
             (-R1 ** 2 + 2 * R1 * l1 - l1 ** 2 + x ** 2 + y ** 2) * (
                     R1 ** 2 + 2 * R1 * l1 + l1 ** 2 - x ** 2 - y ** 2))) / (2 * R1 * (x ** 2 + y ** 2))
@@ -86,11 +86,10 @@ class PrinterCommander:
         return alpha1, alpha2
 
     def move_to_alphas(self, alpha1_deg: float, alpha2_deg: float):
-        # alpha1, alpha2 = alphas_deg
         print(f'requested\t l{alpha1_deg}r{alpha2_deg}')
 
         text = self.send_serial_command(f'move l{alpha1_deg} r{alpha2_deg}')
-        self.curr_alpha1, self.curr_alpha2 = map(float, text.split())
+        self.curr_alpha1, self.curr_alpha2 = map(float, text.split()[1:])
 
     def move_to_xy(self, x: float, y: float):
         alphas = self.__getAlphas(x, y)
@@ -113,7 +112,7 @@ class PrinterCommander:
     def send_serial_command(self, command: str, terminator="\n") -> str:
         self.serial.write((command + terminator).encode('ascii'))
         text = self.serial.readline().decode("ascii")
-        print(text)
+        print("Plotter response: ", text)
         return text
 
     def burst(self, xys: typing.Collection[typing.Tuple[float, float]]):
@@ -125,19 +124,26 @@ class PrinterCommander:
             fraction = int(number % 1 * 255 + .5)
             return bytes([int(number), fraction])
 
-        def serializedPointList(point_list: typing.Iterable[typing.Tuple[float, float]]):
+        def serializedPointList(point_list: typing.Collection[typing.Tuple[float, float]]):
             res = bytearray()
+            checksum = 0
             for a, b in point_list:
                 res += serializedNumber(a)
                 res += serializedNumber(b)
-            return res
+                checksum = (checksum + int.from_bytes(serializedNumber(a), byteorder='big') * 0x10000 +
+                            int.from_bytes(serializedNumber(b), byteorder='big')) % 0x100000000
+            return res + checksum.to_bytes(4, byteorder="big", signed=False)
 
         self.send_serial_command(f"burst s{len(xys)}")
+
         self.serial.write(serializedPointList(alphass))
         text = self.serial.readline().decode("ascii")
-        print(text)
+        while not text.startswith("ok "):
+            print("Plotter response: ", text)
+            self.serial.write(serializedPointList(alphass))
+            text = self.serial.readline().decode("ascii")
 
-        self.curr_alpha1, self.curr_alpha2 = map(float, text.split())
+        self.curr_alpha1, self.curr_alpha2 = map(float, text.split()[1:])
         print(f'actual\t\t l{self.curr_alpha1}r{self.curr_alpha2}')
 
 
@@ -145,21 +151,23 @@ class DrawingProcess(Thread):
     def __init__(self,
                  printer: PrinterCommander,
                  filename: str,
-                 interpolation_resolution: float):
+                 interpolation_resolution: float = 0.1,
+                 speed: float = 300):
         super().__init__()
         self.stop_event = Event()
         self.printer = printer
         self.drawn_points = Queue()  # todo: make this exist in main thread (bug: last segment not displayed on screen)
         self.interpolator = GCodeInterpolator(read_gcode_file(filename),
                                               max_point_distance_mm=interpolation_resolution)
-        self.print = self.burst_printing
+        self.speed = speed
+        self.printing_method = self.burst_printing
 
     def stop(self):
         self.stop_event.set()
 
     def run(self):
-        self.printer.set_rpm(100)
-        self.print()
+        self.printer.set_rpm(self.speed)
+        self.printing_method()
 
     def regular_printing(self):
         for x, y in self.interpolator.xy_list_interpolated:
@@ -194,7 +202,7 @@ class App(tk.Tk):
         self.canvas_height = canvas_height
 
         self.title('Plotter')
-        self.geometry(f"{canvas_width + 20}x{canvas_height + 100}")
+        self.geometry(f"{canvas_width + 20}x{canvas_height + 100}+500+0")
         self.resizable(0, 0)
 
         self.previous_serial_command = ""
@@ -231,7 +239,7 @@ class App(tk.Tk):
         self.destroy()
 
     def start_drawing(self):
-        self.drawing_process = DrawingProcess(self.printer, self.filename.get(), interpolation_resolution=0.1)
+        self.drawing_process = DrawingProcess(self.printer, self.filename.get(), interpolation_resolution=0.1, speed=50)
         self.drawing_process.start()
         self.monitor_drawing_process()
 
@@ -331,7 +339,6 @@ class App(tk.Tk):
         self.reset_button = ttk.Button(self.printer_controls_frame, text='Zero Angles')
         self.reset_button['command'] = self.printer.zero_position
         self.reset_button.pack(fill=tk.BOTH, side=tk.RIGHT)
-
 
     def monitor_drawing_process(self):
         if self.drawing_process.is_alive():

@@ -111,6 +111,7 @@ void moveMotorsBySteps(int lSteps, int rSteps){
 }
 
 void printCurrentAngles(){
+  Serial.print("ok ");
   Serial.print(String(motorLeft.getCurrentAngleDeg(), 8));
   Serial.print(" ");
   Serial.println(String(motorRight.getCurrentAngleDeg(), 8));
@@ -147,10 +148,29 @@ void loop() {
     }else if(incomingString.startsWith("burst")){
 
       Serial.println("entered burst mode");
-      uint16_t size = getCommandParam<long>(incomingString, "s", 16);
+      const uint16_t size = getCommandParam<long>(incomingString, "s", 15);
 
-      uint8_t buffer[size * 4];
-      Serial.readBytes(buffer, size * 4);
+      uint8_t buffer[size * 4 + 4];
+      Serial.readBytes(buffer, size * 4 + 4);
+
+      uint32_t expectedChecksum = static_cast<uint32_t>(buffer[size * 4 + 0]) << 8;
+      expectedChecksum = (expectedChecksum + buffer[size * 4 + 1]) << 8;
+      expectedChecksum = (expectedChecksum + buffer[size * 4 + 2]) << 8;
+      expectedChecksum = expectedChecksum + buffer[size * 4 + 3];
+
+      uint32_t actualChecksum = 0;
+      for(uint16_t i = 0; i < size; i++){
+        uint32_t temp = static_cast<uint32_t>(buffer[(i + 1) * 4 - 4]) << 8;
+        temp = (temp + buffer[(i + 1) * 4 - 3]) << 8;
+        temp = (temp + buffer[(i + 1) * 4 - 2]) << 8;
+        temp =  temp + buffer[(i + 1) * 4 - 1];
+        actualChecksum += temp;
+      }
+
+      if (expectedChecksum != actualChecksum){
+        Serial.print("checksum error");
+        return;
+      }
 
       for(uint16_t i = 0; i < size; i++ ){
         const double ldegrees = buffer[i * 4] + buffer[i * 4 + 1] / 255.0;
@@ -163,7 +183,6 @@ void loop() {
         const int rStepsDelta = rStepsTemp - motorRight.getCurrentStepState();
 
         moveMotorsBySteps(lStepsDelta, rStepsDelta);
-        //printCurrentAngles();
       }
       printCurrentAngles();
 
