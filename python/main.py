@@ -11,6 +11,8 @@ import math
 import typing
 from gcodehandler import *
 
+# todo: refactor logging
+
 
 class PrinterCommander:
     BURST_SIZE = 15  # each point is 2 bytes -> 15*2*2+4(checksum)=64=Arduino serial buffer size
@@ -88,8 +90,8 @@ class PrinterCommander:
     def move_to_alphas(self, alpha1_deg: float, alpha2_deg: float):
         print(f'requested\t l{alpha1_deg}r{alpha2_deg}')
 
-        text = self.send_serial_command(f'move l{alpha1_deg} r{alpha2_deg}')
-        self.curr_alpha1, self.curr_alpha2 = map(float, text.split()[1:])
+        response = self.send_serial_command(f'move l{alpha1_deg} r{alpha2_deg}')
+        self.__parse_anlges_response(response)
 
     def move_to_xy(self, x: float, y: float):
         alphas = self.__getAlphas(x, y)
@@ -103,6 +105,13 @@ class PrinterCommander:
         self.curr_alpha1 = alpha1_deg
         self.curr_alpha2 = alpha2_deg
 
+    def __parse_anlges_response(self, text):
+        self.curr_alpha1, self.curr_alpha2 = map(float, text.split()[1:])
+
+    def autocalibrate(self):
+        response = self.send_serial_command("autocalibrate")
+        self.__parse_anlges_response(response)
+
     def set_rpm(self, rpm: float):
         self.send_serial_command(f"setSpeed {rpm}")
 
@@ -111,9 +120,9 @@ class PrinterCommander:
 
     def send_serial_command(self, command: str, terminator="\n") -> str:
         self.serial.write((command + terminator).encode('ascii'))
-        text = self.serial.readline().decode("ascii")
-        print("Plotter response: ", text)
-        return text
+        response = self.serial.readline().decode("ascii")
+        print("Plotter response: ", response)
+        return response
 
     def burst(self, xys: typing.Collection[typing.Tuple[float, float]]):
         assert len(xys) <= self.__class__.BURST_SIZE
@@ -143,7 +152,7 @@ class PrinterCommander:
             self.serial.write(serializedPointList(alphass))
             text = self.serial.readline().decode("ascii")
 
-        self.curr_alpha1, self.curr_alpha2 = map(float, text.split()[1:])
+        self.__parse_anlges_response(text)
         print(f'actual\t\t l{self.curr_alpha1}r{self.curr_alpha2}')
 
 
@@ -287,7 +296,6 @@ class App(tk.Tk):
         self.printer.move_to_xy(*self.target_xy(event.x, event.y))
 
     def create_body_frame(self):
-        # self.drawing_area_frame = ttk.Frame(self)
         self.canvas = tk.Canvas(self,
                                 width=self.canvas_width,
                                 height=self.canvas_height, borderwidth=0, highlightthickness=0)
@@ -298,8 +306,6 @@ class App(tk.Tk):
         # ^todo: BUG: button release not detected while printer head moving -> phantom move events. solution: separate thread for printer
 
         self.canvas.grid(column=0, row=0, sticky=tk.NSEW, padx=10, pady=10)
-
-        # self.drawing_area_frame.grid(column=0, row=0, sticky=tk.NSEW, padx=10, pady=0)
 
     def create_command_frame(self):
         self.controls_frame = ttk.Frame(self)
@@ -332,13 +338,17 @@ class App(tk.Tk):
         self.serial_command_entry.bind('<Return>', self.send_serial_command, add='+')
         self.serial_command_entry.bind('<Up>', self.recall_previous_serial_command)
 
-        self.reset_button = ttk.Button(self.printer_controls_frame, text='Reset Head')
-        self.reset_button['command'] = self.reset_head
-        self.reset_button.pack(fill=tk.BOTH, side=tk.RIGHT)
+        self.autocalibrate_button = ttk.Button(self.printer_controls_frame, text='Auto Calibrate')
+        self.autocalibrate_button['command'] = self.printer.autocalibrate
+        self.autocalibrate_button.pack(fill=tk.BOTH, side=tk.RIGHT)
 
-        self.reset_button = ttk.Button(self.printer_controls_frame, text='Zero Angles')
-        self.reset_button['command'] = self.printer.zero_position
-        self.reset_button.pack(fill=tk.BOTH, side=tk.RIGHT)
+        self.reset_head_button = ttk.Button(self.printer_controls_frame, text='Reset Head')
+        self.reset_head_button['command'] = self.reset_head
+        self.reset_head_button.pack(fill=tk.BOTH, side=tk.RIGHT)
+
+        self.zero_button = ttk.Button(self.printer_controls_frame, text='Zero Angles')
+        self.zero_button['command'] = self.printer.zero_position
+        self.zero_button.pack(fill=tk.BOTH, side=tk.RIGHT)
 
     def monitor_drawing_process(self):
         if self.drawing_process.is_alive():

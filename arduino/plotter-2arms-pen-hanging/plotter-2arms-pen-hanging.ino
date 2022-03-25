@@ -1,6 +1,9 @@
 #include <math.h>
 #include <Stepper.h>
 
+const int16_t autocalibration_offset_left = 64;
+const int16_t autocalibration_offset_right = 34;
+
 template <typename T> 
 int sgn(T val) {
    return (T(0) < val) - (val < T(0));
@@ -26,7 +29,7 @@ template <typename T>
 T getCommandParam(const String& str,const String& pattern, T defaultResult = T()) {
     const int endOfCommandIndex = str.indexOf(' ');
     const int patternIndex = str.indexOf(pattern, endOfCommandIndex + 1);
-    if (patternIndex == -1){
+    if (endOfCommandIndex == -1 || patternIndex == -1){
       return defaultResult;
     }
     const int endOfPatternIndex = str.indexOf(' ', patternIndex); // (unsigned)(-1 is ok)
@@ -34,6 +37,7 @@ T getCommandParam(const String& str,const String& pattern, T defaultResult = T()
     return result;
 }
 
+class MyStepper;
 class MyStepper: public Stepper{
   public:
     static constexpr int STEPS_PER_REV = 32;
@@ -41,6 +45,7 @@ class MyStepper: public Stepper{
     static constexpr double STEPS_PER_OUT_REV = STEPS_PER_REV * GEAR_RED;
   private:
     long currStepState = 0;
+    double rpm;
   public:
     MyStepper(int pin1, int pin2, int pin3, int pin4)
       :Stepper(STEPS_PER_REV, pin1, pin2, pin3, pin4){       
@@ -74,6 +79,15 @@ class MyStepper: public Stepper{
       Stepper::step(numberOfSteps);
     }
 
+    void setSpeed(long rpm){
+      this->rpm = rpm;
+      Stepper::setSpeed(static_cast<long>(rpm + 0.5));
+    }
+
+    double getSpeed()const{
+      return rpm;
+    }
+
     double getCurrentAngleDeg() const {
       return stepsToDegrees(currStepState);
     }
@@ -82,13 +96,65 @@ class MyStepper: public Stepper{
 // wires on pins 2-blue 3-yellow 4-orange 5-pink, same order for right motor
 MyStepper motorRight(5, 4, 3, 2);
 MyStepper motorLeft(6, 7, 8, 9);
+//
+//const int16_t autocalibration_offset_left = 64;
+//const int16_t autocalibration_offset_right = 34;
+
+
+void autoCalibrate(MyStepper& motor, uint8_t switchPin, int16_t calibrationOffset);
+void autoCalibrate(MyStepper& motor, uint8_t switchPin, int16_t calibrationOffset){
+  const double currSpeed = motor.getSpeed();
+  motor.setSpeed(250);
+  bool pinHigh = digitalRead(switchPin);
+  while(! pinHigh){  // move up
+    motor.step(1);
+    pinHigh = digitalRead(switchPin);
+  }
+  motor.setSpeed(100);
+  while(pinHigh){  // move down
+    motor.step(-1);
+    delay(10);
+    pinHigh = digitalRead(switchPin);
+  }
+  motor.setSpeed(250);
+  motor.step(calibrationOffset); //move up
+  motor.zeroStepState();
+  motor.setSpeed(currSpeed);
+}
+
 
 void setup() {
+  pinMode(A0, INPUT_PULLUP);
+  pinMode(A1, INPUT_PULLUP);
   Serial.begin(115200);
   Serial.setTimeout(10);
   motorLeft.setSpeed(200);
   motorRight.setSpeed(200);
   Serial.println("Plotter ready");
+//
+//  delay(5000);
+//  motorLeft.step(100);
+//  motorRight.step(100);
+//  
+//  bool pinHigh = digitalRead(A0);
+//  int numSteps = 0;
+//  while(pinHigh){
+//    motorLeft.step(-1);
+//    numSteps++;
+//    delay(100);
+//    pinHigh = digitalRead(A0);
+//  }
+//  Serial.println(numSteps);
+//  
+//  pinHigh = true;
+//  numSteps =digitalRead(A1);
+//  while(pinHigh){
+//   motorRight.step(-1);
+//   numSteps++;
+//   delay(100);
+//   pinHigh = digitalRead(A1);
+//  }
+//   Serial.println(numSteps);
 }
 
 void moveMotorsBySteps(int lSteps, int rSteps){
@@ -145,6 +211,17 @@ void loop() {
       motorRight.calibrate(rightAngle);
       Serial.println("Calibration done");
       
+    }else if(incomingString.startsWith("autocalibrate")){
+      
+      const int16_t lstepsOffset = getCommandParam<long>(incomingString, "l", autocalibration_offset_left);
+      const int16_t rstepsOffset = getCommandParam<long>(incomingString, "r", autocalibration_offset_right);
+      autoCalibrate(motorLeft, A0, lstepsOffset);
+      autoCalibrate(motorRight, A1, rstepsOffset);
+      autoCalibrate(motorLeft, A0, lstepsOffset); // has to be done twice
+      autoCalibrate(motorRight, A1, rstepsOffset);
+      
+      printCurrentAngles();
+      
     }else if(incomingString.startsWith("burst")){
 
       Serial.println("entered burst mode");
@@ -188,7 +265,7 @@ void loop() {
 
     }else if(incomingString.startsWith("move")){
 
-      const bool relative = incomingString.startsWith("move delta");
+      const bool relative = incomingString.startsWith("moved");
 
       const double ldegrees = getCommandParam<double>(incomingString, "l", 
         relative ? 0.0 : motorLeft.getCurrentAngleDeg());
