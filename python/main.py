@@ -11,7 +11,10 @@ import math
 import typing
 from gcodehandler import *
 
+
 class PrinterCommander:
+    BURST_SIZE = 16  # each point is 2 bytes -> 16*2*2=64=Arduino serial buffer size
+
     def __init__(self):
         # printer physical parameters:
         #lego arms attached to metal wheel
@@ -87,13 +90,7 @@ class PrinterCommander:
         print(f'requested\t l{alpha1_deg}r{alpha2_deg}')
 
         text = self.send_serial_command(f'move l{alpha1_deg} r{alpha2_deg}')
-        left_str, right_str = text.split()
-        actual_left_angle = float(left_str[2:])
-        actual_right_angle = float(right_str[2:])
-
-        print(f'actual\t\t l{actual_left_angle}r{actual_right_angle}')
-        self.curr_alpha1 = actual_left_angle
-        self.curr_alpha2 = actual_right_angle
+        self.curr_alpha1, self.curr_alpha2 = map(float, text.split())
 
     def move_to_xy(self, x: float, y: float):
         alphas = self.__getAlphas(x, y)
@@ -113,26 +110,36 @@ class PrinterCommander:
     def zero_position(self):
         self.send_serial_command(f'zeroAngles')
 
-    def send_serial_command(self, command: str) -> str:
-        self.serial.write((command + "\n").encode('ascii'))
+    def send_serial_command(self, command: str, terminator="\n") -> str:
+        self.serial.write((command + terminator).encode('ascii'))
         text = self.serial.readline().decode("ascii")
         print(text)
         return text
 
-    def burst(self, xys: typing.Iterable[typing.Tuple[float, float]]):
-        def serializePointList(point_list: typing.Iterable[typing.Tuple[float, float]]):
-            return "".join(f"{alpha1:06.2f}{alpha2:06.2f}"
-                           for alpha1, alpha2 in point_list)
+    def burst(self, xys: typing.Collection[typing.Tuple[float, float]]):
+        assert len(xys) <= self.__class__.BURST_SIZE
 
-        alphass = (self.__getAlphas(x, y) for x, y in xys)
-        text = self.send_serial_command("bur" + serializePointList(alphass))
-        left_str, right_str = text.split()
-        actual_left_angle = float(left_str[2:])  # todo: unify this
-        actual_right_angle = float(right_str[2:])
+        alphass = [self.__getAlphas(x, y) for x, y in xys]  # has to evaluated eagerly, so as the get exception here
 
-        print(f'actual\t\t l{actual_left_angle}r{actual_right_angle}')
-        self.curr_alpha1 = actual_left_angle
-        self.curr_alpha2 = actual_right_angle
+        def serializedNumber(number: float) -> bytes:
+            fraction = int(number % 1 * 255 + .5)
+            return bytes([int(number), fraction])
+
+        def serializedPointList(point_list: typing.Iterable[typing.Tuple[float, float]]):
+            res = bytearray()
+            for a, b in point_list:
+                res += serializedNumber(a)
+                res += serializedNumber(b)
+            return res
+
+        self.send_serial_command(f"burst s{len(xys)}")
+        self.serial.write(serializedPointList(alphass))
+        text = self.serial.readline().decode("ascii")
+        print(text)
+
+        self.curr_alpha1, self.curr_alpha2 = map(float, text.split())
+        print(f'actual\t\t l{self.curr_alpha1}r{self.curr_alpha2}')
+
 
 class DrawingProcess(Thread):
     def __init__(self,
@@ -145,13 +152,13 @@ class DrawingProcess(Thread):
         self.drawn_points = Queue()  # todo: make this exist in main thread (bug: last segment not displayed on screen)
         self.interpolator = GCodeInterpolator(read_gcode_file(filename),
                                               max_point_distance_mm=interpolation_resolution)
-        self.print = self.regular_printing
+        self.print = self.burst_printing
 
     def stop(self):
         self.stop_event.set()
 
     def run(self):
-        self.printer.set_rpm(350)
+        self.printer.set_rpm(100)
         self.print()
 
     def regular_printing(self):
@@ -162,8 +169,10 @@ class DrawingProcess(Thread):
             self.drawn_points.put((x, y))
 
     def burst_printing(self):
-        BURST_SIZE = 5
-        bursts = zip(*(self.interpolator.xy_list_interpolated[i::BURST_SIZE] for i in range(BURST_SIZE)))
+        burst_size = self.printer.BURST_SIZE
+        point_list = self.interpolator.xy_list_interpolated
+        bursts = [point_list[i * burst_size: (i+1) * burst_size]
+                  for i in range((len(point_list) - 1) // burst_size + 1)]
         for burst in bursts:
             if self.stop_event.is_set():
                 return
@@ -330,7 +339,7 @@ class App(tk.Tk):
             while not self.drawing_process.drawn_points.empty():
                 point = self.drawing_process.drawn_points.get()
                 self.canvas.create_line(*self.curr_xy, *self.screen_xy(*point))
-                print("line ", self.curr_xy, self.screen_xy(*point))
+                # print("line ", self.curr_xy, self.screen_xy(*point))
                 self.curr_xy = self.screen_xy(*point)
             self.after(100, lambda: self.monitor_drawing_process())
 

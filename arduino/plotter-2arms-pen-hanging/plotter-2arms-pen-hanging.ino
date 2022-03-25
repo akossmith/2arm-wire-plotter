@@ -111,9 +111,8 @@ void moveMotorsBySteps(int lSteps, int rSteps){
 }
 
 void printCurrentAngles(){
-  Serial.print("dl");
   Serial.print(String(motorLeft.getCurrentAngleDeg(), 8));
-  Serial.print(" dr");
+  Serial.print(" ");
   Serial.println(String(motorRight.getCurrentAngleDeg(), 8));
 }
 
@@ -129,10 +128,7 @@ void loop() {
 
     }else if(incomingString.startsWith("getAlphas")){
       
-      Serial.print("alphaL");
-      Serial.print(String(motorLeft.getCurrentAngleDeg(), 8));
-      Serial.print(" alphaR");
-      Serial.println(String(motorRight.getCurrentAngleDeg(), 8));
+      printCurrentAngles();
 
     }else if(incomingString.startsWith("zeroAngles")){
       
@@ -148,39 +144,50 @@ void loop() {
       motorRight.calibrate(rightAngle);
       Serial.println("Calibration done");
       
-    }else if(incomingString.startsWith("bur")){
-      for(int i = 0; i < 5 ; i++){
-        const double ldegrees = incomingString.substring(3 + i * 12, 3 + i * 12 + 6).toDouble();
-        const double rdegrees = incomingString.substring(3 + i * 12 + 6, 3 + i * 12 + 12).toDouble();
+    }else if(incomingString.startsWith("burst")){
+
+      Serial.println("entered burst mode");
+      uint16_t size = getCommandParam<long>(incomingString, "s", 16);
+
+      uint8_t buffer[size * 4];
+      Serial.readBytes(buffer, size * 4);
+
+      for(uint16_t i = 0; i < size; i++ ){
+        const double ldegrees = buffer[i * 4] + buffer[i * 4 + 1] / 255.0;
+        const double rdegrees = buffer[i * 4 + 2] + buffer[i * 4 + 3] / 255.0;
 
         const int lStepsTemp = motorLeft.degreesToSteps(ldegrees);
-        const int lStepsRelative = lStepsTemp - motorLeft.getCurrentStepState();
+        const int lStepsDelta = lStepsTemp - motorLeft.getCurrentStepState();
 
         const int rStepsTemp = motorRight.degreesToSteps(rdegrees);
-        const int rStepsRelative = rStepsTemp - motorRight.getCurrentStepState();
+        const int rStepsDelta = rStepsTemp - motorRight.getCurrentStepState();
 
-        moveMotorsBySteps(lStepsRelative, rStepsRelative);
+        moveMotorsBySteps(lStepsDelta, rStepsDelta);
+        //printCurrentAngles();
       }
       printCurrentAngles();
+
     }else if(incomingString.startsWith("move")){
+
       const bool relative = incomingString.startsWith("move delta");
 
       const double ldegrees = getCommandParam<double>(incomingString, "l", 
         relative ? 0.0 : motorLeft.getCurrentAngleDeg());
       const int lStepsTemp = motorLeft.degreesToSteps(ldegrees);
-      const int lStepsRelative = 
+      const int lStepsDelta = 
         relative ? lStepsTemp : lStepsTemp - motorLeft.getCurrentStepState();
 
       const double rdegrees = getCommandParam<double>(incomingString, "r",
         relative ? 0.0 : motorRight.getCurrentAngleDeg());
       const int rStepsTemp = motorRight.degreesToSteps(rdegrees);
-      const int rStepsRelative = 
+      const int rStepsDelta = 
         relative ? rStepsTemp : rStepsTemp - motorRight.getCurrentStepState();
 
-      moveMotorsBySteps(lStepsRelative, rStepsRelative);
+      moveMotorsBySteps(lStepsDelta, rStepsDelta);
 
       //return actual angles in degrees (!= requested due to finite stepper resolution)
       printCurrentAngles();
+      
     }else{
       Serial.print("Invalid command: ");
       Serial.println(incomingString);
