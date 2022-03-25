@@ -13,7 +13,8 @@ from gcodehandler import *
 
 
 class PrinterCommander:
-    BURST_SIZE = 16  # each point is 2 bytes -> 16*2*2=64=Arduino serial buffer size
+    BURST_SIZE = 10  # each point is 3 bytes (1 byte integer, 2bytes fraction)
+                     # -> 10*3*2=60 <= 64=Arduino serial buffer size
 
     def __init__(self):
         # printer physical parameters:
@@ -122,8 +123,8 @@ class PrinterCommander:
         alphass = [self.__getAlphas(x, y) for x, y in xys]  # has to evaluated eagerly, so as the get exception here
 
         def serializedNumber(number: float) -> bytes:
-            fraction = int(number % 1 * 255 + .5)
-            return bytes([int(number), fraction])
+            fraction = int(number % 1 * 0xFFFF + .5)
+            return bytes([int(number), fraction >> 8, fraction & 0xFF])
 
         def serializedPointList(point_list: typing.Iterable[typing.Tuple[float, float]]):
             res = bytearray()

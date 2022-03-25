@@ -147,14 +147,14 @@ void loop() {
     }else if(incomingString.startsWith("burst")){
 
       Serial.println("entered burst mode");
-      uint16_t size = getCommandParam<long>(incomingString, "s", 16);
+      uint16_t size = getCommandParam<long>(incomingString, "s", 10);
 
-      uint8_t buffer[size * 4];
-      Serial.readBytes(buffer, size * 4);
+      uint8_t buffer[size * 6];
+      Serial.readBytes(buffer, size * 6);
 
       for(uint16_t i = 0; i < size; i++ ){
-        const double ldegrees = buffer[i * 4] + buffer[i * 4 + 1] / 255.0;
-        const double rdegrees = buffer[i * 4 + 2] + buffer[i * 4 + 3] / 255.0;
+        const double ldegrees = buffer[i * 6] + double((static_cast<uint16_t>(buffer[i * 6 + 1]) << 8) + buffer[i * 6 + 2]) / 0xFFFF;
+        const double rdegrees = buffer[i * 6 + 3] + double((static_cast<uint16_t>(buffer[i * 6 + 4]) << 8) + buffer[i * 6 + 5]) / 0xFFFF;
 
         const int lStepsTemp = motorLeft.degreesToSteps(ldegrees);
         const int lStepsDelta = lStepsTemp - motorLeft.getCurrentStepState();
