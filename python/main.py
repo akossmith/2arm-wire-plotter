@@ -240,8 +240,6 @@ class App(tk.Tk):
         if self.drawing_process.is_alive():
             self.drawing_process.stop()
             self.drawing_process.join()
-        if tk.messagebox.askyesno("Reset Head", "Do you want to reset printer head?", default="no"):
-            self.printer.reset_head()
         with open("lastAlphas.txt", "w") as f:
             a1, a2 = self.printer.current_alphas
             f.write(f"{a1} {a2}")

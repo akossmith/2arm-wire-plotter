@@ -1,9 +1,6 @@
 #include <math.h>
 #include <Stepper.h>
 
-const int16_t autocalibration_offset_left = 64;
-const int16_t autocalibration_offset_right = 34;
-
 template <typename T> 
 int sgn(T val) {
    return (T(0) < val) - (val < T(0));
@@ -96,32 +93,78 @@ class MyStepper: public Stepper{
 // wires on pins 2-blue 3-yellow 4-orange 5-pink, same order for right motor
 MyStepper motorRight(5, 4, 3, 2);
 MyStepper motorLeft(6, 7, 8, 9);
-//
-//const int16_t autocalibration_offset_left = 64;
-//const int16_t autocalibration_offset_right = 34;
 
+const int16_t autocalibration_offset_left = 62;
+const int16_t autocalibration_offset_right = 31;
 
-void autoCalibrate(MyStepper& motor, uint8_t switchPin, int16_t calibrationOffset);
-void autoCalibrate(MyStepper& motor, uint8_t switchPin, int16_t calibrationOffset){
-  const double currSpeed = motor.getSpeed();
-  motor.setSpeed(250);
-  bool pinHigh = digitalRead(switchPin);
-  while(! pinHigh){  // move up
-    motor.step(1);
-    pinHigh = digitalRead(switchPin);
-  }
-  motor.setSpeed(100);
-  while(pinHigh){  // move down
-    motor.step(-1);
-    delay(10);
-    pinHigh = digitalRead(switchPin);
-  }
-  motor.setSpeed(250);
-  motor.step(calibrationOffset); //move up
-  motor.zeroStepState();
-  motor.setSpeed(currSpeed);
+void moveMotorsBySteps(int lSteps, int rSteps){
+  //interleaving steps, so that left and right change simultaneously
+  MyStepper *motors[] = {&motorLeft, &motorRight};
+  const int steps[] = {lSteps, rSteps};
+  const size_t smallerIndex = (abs(lSteps) <= abs(rSteps)) ? 0 : 1;
+  const size_t biggerIndex = 1 - smallerIndex;
+  const double minStepRate = abs(steps[biggerIndex]) * 1.0 / abs(steps[smallerIndex]);
+  
+  int minStepsTaken = 0;
+  for(int i = 0; i < abs(steps[biggerIndex]); i++){
+    motors[biggerIndex]->step(sgn(steps[biggerIndex]));
+    if(i > minStepsTaken * minStepRate){
+      motors[smallerIndex]->step(sgn(steps[smallerIndex]));
+      minStepsTaken ++;
+    }
+  } 
+  motors[smallerIndex]->step(steps[smallerIndex] - sgn(steps[smallerIndex]) * minStepsTaken);
 }
 
+void autoCalibrate(int16_t calibrationOffsetL, int16_t calibrationOffsetR);
+void autoCalibrate(int16_t calibrationOffsetL, int16_t calibrationOffsetR){
+  const double downSpeeds[]{250, 100};
+  const double upSpeeds[]{250, 250};
+  const uint8_t cycles = 2;
+  
+  const double currLSpeed = motorLeft.getSpeed();
+  const double currRSpeed = motorRight.getSpeed();
+
+  for (int i = 0; i < cycles; i++){
+    // move up until switch opens
+    motorLeft.setSpeed(upSpeeds[i]);
+    motorRight.setSpeed(upSpeeds[i]);
+    bool armLeftHigh = digitalRead(A0);
+    bool armRightHigh = digitalRead(A1);
+    while(! armLeftHigh || ! armRightHigh){
+      motorLeft.step(1 - armLeftHigh);
+      motorRight.step(1 - armRightHigh);
+      armLeftHigh = digitalRead(A0);
+      armRightHigh = digitalRead(A1);
+    }
+    
+    // move down until switch closes
+    motorLeft.setSpeed(downSpeeds[i]);
+    motorRight.setSpeed(downSpeeds[i]);
+    while(armLeftHigh || armRightHigh){
+      motorLeft.step(-armLeftHigh);
+      motorRight.step(-armRightHigh);
+      armLeftHigh = digitalRead(A0);
+      armRightHigh = digitalRead(A1);
+    }
+    
+    // move up by predetermined offset
+    motorLeft.setSpeed(upSpeeds[i]);
+    motorRight.setSpeed(upSpeeds[i]);
+    moveMotorsBySteps(calibrationOffsetL, calibrationOffsetR);
+  }
+  motorLeft.zeroStepState();
+  motorRight.zeroStepState();
+  motorLeft.setSpeed(currLSpeed);
+  motorRight.setSpeed(currRSpeed);
+}
+
+void printCurrentAngles(){
+  Serial.print("ok ");
+  Serial.print(String(motorLeft.getCurrentAngleDeg(), 8));
+  Serial.print(" ");
+  Serial.println(String(motorRight.getCurrentAngleDeg(), 8));
+}
 
 void setup() {
   pinMode(A0, INPUT_PULLUP);
@@ -157,32 +200,6 @@ void setup() {
 //   Serial.println(numSteps);
 }
 
-void moveMotorsBySteps(int lSteps, int rSteps){
-  //interleaving steps, so that left and right change simultaneously
-  MyStepper *motors[] = {&motorLeft, &motorRight};
-  const int steps[] = {lSteps, rSteps};
-  const size_t smallerIndex = (abs(lSteps) <= abs(rSteps)) ? 0 : 1;
-  const size_t biggerIndex = 1 - smallerIndex;
-  const double minStepRate = abs(steps[biggerIndex]) * 1.0 / abs(steps[smallerIndex]);
-  
-  int minStepsTaken = 0;
-  for(int i = 0; i < abs(steps[biggerIndex]); i++){
-    motors[biggerIndex]->step(sgn(steps[biggerIndex]));
-    if(i > minStepsTaken * minStepRate){
-      motors[smallerIndex]->step(sgn(steps[smallerIndex]));
-      minStepsTaken ++;
-    }
-  } 
-  motors[smallerIndex]->step(steps[smallerIndex] - sgn(steps[smallerIndex]) * minStepsTaken);
-}
-
-void printCurrentAngles(){
-  Serial.print("ok ");
-  Serial.print(String(motorLeft.getCurrentAngleDeg(), 8));
-  Serial.print(" ");
-  Serial.println(String(motorRight.getCurrentAngleDeg(), 8));
-}
-
 void loop() {
   if (Serial.available() > 0) {
     String incomingString = Serial.readStringUntil('\n');
@@ -215,10 +232,7 @@ void loop() {
       
       const int16_t lstepsOffset = getCommandParam<long>(incomingString, "l", autocalibration_offset_left);
       const int16_t rstepsOffset = getCommandParam<long>(incomingString, "r", autocalibration_offset_right);
-      autoCalibrate(motorLeft, A0, lstepsOffset);
-      autoCalibrate(motorRight, A1, rstepsOffset);
-      autoCalibrate(motorLeft, A0, lstepsOffset); // has to be done twice
-      autoCalibrate(motorRight, A1, rstepsOffset);
+      autoCalibrate(lstepsOffset, rstepsOffset);
       
       printCurrentAngles();
       
