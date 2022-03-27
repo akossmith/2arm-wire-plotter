@@ -30,7 +30,7 @@ class PrinterCommander:
         self.width = 80
         self.height = 80
         self.x_min = (self.D - self.width) / 2.0
-        self.y_min = 15
+        self.y_min = 20
 
         self.curr_alpha1 = 0.0
         self.curr_alpha2 = 0.0
@@ -246,7 +246,10 @@ class App(tk.Tk):
         self.destroy()
 
     def start_drawing(self):
-        self.drawing_process = DrawingProcess(self.printer, self.filename.get(), interpolation_resolution=0.1, speed=50)
+        self.drawing_process = DrawingProcess(self.printer,
+                                              self.filename.get(),
+                                              interpolation_resolution=0.1,
+                                              speed=60)
         self.drawing_process.start()
         self.monitor_drawing_process()
 

@@ -34,19 +34,40 @@ T getCommandParam(const String& str,const String& pattern, T defaultResult = T()
     return result;
 }
 
-class MyStepper;
-class MyStepper: public Stepper{
+class MyStepper{
   public:
-    static constexpr int STEPS_PER_REV = 32;
+    static constexpr int STEPS_PER_REV = 64;
     static constexpr double GEAR_RED = 63.68395;
     static constexpr double STEPS_PER_OUT_REV = STEPS_PER_REV * GEAR_RED;
-  private:
-    long currStepState = 0;
-    double rpm;
-  public:
-    MyStepper(int pin1, int pin2, int pin3, int pin4)
-      :Stepper(STEPS_PER_REV, pin1, pin2, pin3, pin4){       
+    const uint16_t microStepsPerCycle {8};
+    const uint32_t microStepsPerRev;
 
+  private:
+    const int halfStepSeq[8][4]{
+      {1, 0, 1, 0},
+      {1, 0, 0, 0},
+      {1, 0, 0, 1},
+      {0, 0, 0, 1},
+      {0, 1, 0, 1},
+      {0, 1, 0, 0},
+      {0, 1, 1, 0},
+      {0, 0, 1, 0}
+    };
+    int pins[4];
+    long currStepState = 0;
+    int32_t currentPosWithinCycle = 0;
+    long lastStepTimeMicros = 0;
+    double rpm;
+    unsigned long delayMicros;
+  public:
+    MyStepper(int pin1, int pin2, int pin3, int pin4, double rpm)
+        :pins{pin1, pin3, pin2, pin4},
+        microStepsPerRev(STEPS_PER_REV * (microStepsPerCycle / 4)) {
+      pinMode(pins[0], OUTPUT);
+      pinMode(pins[1], OUTPUT);
+      pinMode(pins[2], OUTPUT);
+      pinMode(pins[3], OUTPUT);
+      setSpeed(rpm);
     }
 
     int degreesToSteps(double degrees) const {
@@ -59,12 +80,11 @@ class MyStepper: public Stepper{
     }
 
     void zeroStepState(){
-      currStepState = 0; //calibrate(0.0);
+      currStepState = 0; // same as calibrate(0.0);
     }
 
     void calibrate(double angle){
       currStepState = degreesToSteps(angle);
-      
     }
 
     long getCurrentStepState() const {
@@ -73,12 +93,29 @@ class MyStepper: public Stepper{
 
     void step(int numberOfSteps){
       currStepState += numberOfSteps;
-      Stepper::step(numberOfSteps);
+      
+      for (int j = 0; j < abs(numberOfSteps); j++) {
+        currentPosWithinCycle = (currentPosWithinCycle  + sgn(numberOfSteps) 
+                                + microStepsPerCycle) % microStepsPerCycle;
+        sendSignals();
+        long currMicros = micros();
+        do{
+          currMicros = micros();
+        }while(currMicros - lastStepTimeMicros < delayMicros);
+        lastStepTimeMicros = currMicros;
+      }
+    }
+
+    void sendSignals() const {
+      digitalWrite(pins[0], halfStepSeq[currentPosWithinCycle][0]);
+      digitalWrite(pins[2], halfStepSeq[currentPosWithinCycle][1]);
+      digitalWrite(pins[1], halfStepSeq[currentPosWithinCycle][2]);
+      digitalWrite(pins[3], halfStepSeq[currentPosWithinCycle][3]);
     }
 
     void setSpeed(long rpm){
       this->rpm = rpm;
-      Stepper::setSpeed(static_cast<long>(rpm + 0.5));
+      delayMicros = 1000 * 60.0 / (rpm * microStepsPerRev) * 1000;
     }
 
     double getSpeed()const{
@@ -91,11 +128,11 @@ class MyStepper: public Stepper{
 };
 
 // wires on pins 2-blue 3-yellow 4-orange 5-pink, same order for right motor
-MyStepper motorRight(5, 4, 3, 2);
-MyStepper motorLeft(6, 7, 8, 9);
+MyStepper motorRight(2, 3, 4, 5, 150);
+MyStepper motorLeft(9, 8, 7, 6, 150);
 
-const int16_t autocalibration_offset_left = 62;
-const int16_t autocalibration_offset_right = 31;
+const int16_t autocalibration_offset_left = 120; //60;
+const int16_t autocalibration_offset_right = 54; //28;
 
 void moveMotorsBySteps(int lSteps, int rSteps){
   //interleaving steps, so that left and right change simultaneously
@@ -118,8 +155,8 @@ void moveMotorsBySteps(int lSteps, int rSteps){
 
 void autoCalibrate(int16_t calibrationOffsetL, int16_t calibrationOffsetR);
 void autoCalibrate(int16_t calibrationOffsetL, int16_t calibrationOffsetR){
-  const double downSpeeds[]{250, 100};
-  const double upSpeeds[]{250, 250};
+  const double downSpeeds[]{150, 50};
+  const double upSpeeds[]{150, 150};
   const uint8_t cycles = 2;
   
   const double currLSpeed = motorLeft.getSpeed();
