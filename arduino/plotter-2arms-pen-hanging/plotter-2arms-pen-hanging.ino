@@ -1,4 +1,5 @@
 #include <math.h>
+#include <EEPROM.h>
 #include <Stepper.h>
 
 template <typename T> 
@@ -33,6 +34,88 @@ T getCommandParam(const String& str,const String& pattern, T defaultResult = T()
     const double result = toNumber<T>(str.substring(patternIndex + pattern.length(), endOfPatternIndex));
     return result;
 }
+
+class PowerLowHandler{
+  const int capacitorChargeLevel;
+  const uint8_t capacitorChargePin;
+  const uint8_t capacitorSensePin;
+  bool ready = false;
+  volatile bool lowVoltageFlag = false;
+  void  (*handlerCallback)();
+
+  void discharge()const{
+    pinMode(capacitorChargePin, OUTPUT);
+    digitalWrite(capacitorChargePin, 0);
+    int res = analogRead(capacitorSensePin);
+    while(res > capacitorChargeLevel){
+      res = analogRead(capacitorSensePin);
+    }
+    pinMode(capacitorChargePin, INPUT);
+  }
+  
+  void charge()const{
+
+    pinMode(capacitorChargePin, OUTPUT);
+    digitalWrite(capacitorChargePin, 1);
+    int res = analogRead(capacitorSensePin);
+    while(res <= capacitorChargeLevel){
+      res = analogRead(capacitorSensePin);
+    }
+    pinMode(capacitorChargePin, INPUT);
+  }
+  
+ public:
+  PowerLowHandler(
+    float capacitorChargeLevelPercent, 
+    uint8_t capacitorChargePin,
+    uint8_t capacitorSensePin
+   )
+    :capacitorChargeLevel(int(capacitorChargeLevelPercent * 1023))
+    ,capacitorChargePin(capacitorChargePin)
+    ,capacitorSensePin(capacitorSensePin)
+  {
+  }
+
+  void init(){ //ADC only initialized in main()
+    pinMode(capacitorChargePin, INPUT);
+    pinMode(capacitorSensePin, INPUT);
+    discharge();
+    charge();
+    ready = true;
+  }
+
+  void initIfNotReady(){
+    if(!ready){
+      init();
+    }
+  }
+  
+  void maintain(){
+    initIfNotReady();
+    
+    int res = analogRead(capacitorSensePin);
+    if(res < capacitorChargeLevel){
+      charge();
+    }
+  }
+
+  bool isReady()const{
+    return ready;
+  }
+
+  bool lowVoltage()const{
+    return lowVoltageFlag;
+  }
+
+  void setHandlerCallback(void (*callback)()){
+    this->handlerCallback = callback;
+  }
+
+  void handlePowerLoss(){
+    handlerCallback();
+    lowVoltageFlag = true;
+  }
+} powerLossHandler(0.9, A5, A7);
 
 class MyStepper;
 class MyStepper: public Stepper{
@@ -92,10 +175,9 @@ class MyStepper: public Stepper{
 
 // wires on pins 2-blue 3-yellow 4-orange 5-pink, same order for right motor
 MyStepper motorRight(5, 4, 3, 2);
-MyStepper motorLeft(6, 7, 8, 9);
+MyStepper motorLeft(8, 9, 10, 11);
 
-const int16_t autocalibration_offset_left = 62;
-const int16_t autocalibration_offset_right = 31;
+
 
 void moveMotorsBySteps(int lSteps, int rSteps){
   //interleaving steps, so that left and right change simultaneously
@@ -116,8 +198,28 @@ void moveMotorsBySteps(int lSteps, int rSteps){
   motors[smallerIndex]->step(steps[smallerIndex] - sgn(steps[smallerIndex]) * minStepsTaken);
 }
 
-void autoCalibrate(int16_t calibrationOffsetL, int16_t calibrationOffsetR);
-void autoCalibrate(int16_t calibrationOffsetL, int16_t calibrationOffsetR){
+
+static struct EEPROMData{
+  double autocalibrationOffsetLeftDeg = 9.0;
+  double autocalibrationOffsetRightDeg = 14.49;
+
+  double currAlhpaL;
+  double currAlhpaR;
+
+ void load(){
+   EEPROM.get(0, *this);
+ }
+
+ void save(){
+   EEPROM.put(0, *this);
+ }
+} eepromData;
+
+void autoCalibrate(double calibrationOffsetLDeg, double calibrationOffsetRDeg);
+void autoCalibrate(double calibrationOffsetLDeg, double calibrationOffsetRDeg){
+  int16_t calibrationOffsetL = motorLeft.degreesToSteps(calibrationOffsetLDeg);
+  int16_t calibrationOffsetR = motorRight.degreesToSteps(calibrationOffsetRDeg);
+
   const double downSpeeds[]{250, 100};
   const double upSpeeds[]{250, 250};
   const uint8_t cycles = 2;
@@ -155,6 +257,9 @@ void autoCalibrate(int16_t calibrationOffsetL, int16_t calibrationOffsetR){
   }
   motorLeft.zeroStepState();
   motorRight.zeroStepState();
+  eepromData.autocalibrationOffsetLeftDeg = calibrationOffsetLDeg;
+  eepromData.autocalibrationOffsetRightDeg = calibrationOffsetRDeg;
+  eepromData.save();
   motorLeft.setSpeed(currLSpeed);
   motorRight.setSpeed(currRSpeed);
 }
@@ -169,13 +274,31 @@ void printCurrentAngles(){
 void setup() {
   pinMode(A0, INPUT_PULLUP);
   pinMode(A1, INPUT_PULLUP);
+
+  ADCSRB = 0;           // (Disable) ACME: Analog Comparator Multiplexer Enable
+  ACSR =  bit (ACI)     // (Clear) Analog Comparator Interrupt Flag
+        | bit (ACIE)    // Analog Comparator Interrupt Enable
+        | bit (ACIS1);  // ACIS1, ACIS0: Analog Comparator Interrupt Mode Select (trigger on falling edge)
+
   Serial.begin(115200);
   Serial.setTimeout(10);
   motorLeft.setSpeed(200);
   motorRight.setSpeed(200);
+  powerLossHandler.init();
+  powerLossHandler.setHandlerCallback([](){
+    ::eepromData.currAlhpaL = motorLeft.getCurrentAngleDeg();
+    ::eepromData.currAlhpaR = motorRight.getCurrentAngleDeg();
+    ::eepromData.save();
+    digitalWrite(LED_BUILTIN, 1);
+  });
+  eepromData.load();
+  motorLeft.calibrate(eepromData.currAlhpaL);
+  motorRight.calibrate(eepromData.currAlhpaR);
   Serial.println("Plotter ready");
-//
+
 //  delay(5000);
+//  motorLeft.zeroStepState();
+//  motorRight.zeroStepState();
 //  motorLeft.step(100);
 //  motorRight.step(100);
 //  
@@ -184,20 +307,20 @@ void setup() {
 //  while(pinHigh){
 //    motorLeft.step(-1);
 //    numSteps++;
-//    delay(100);
+//    delay(80);
 //    pinHigh = digitalRead(A0);
 //  }
-//  Serial.println(numSteps);
+//  Serial.println(motorLeft.stepsToDegrees(numSteps - 100));
 //  
 //  pinHigh = true;
 //  numSteps =digitalRead(A1);
 //  while(pinHigh){
 //   motorRight.step(-1);
 //   numSteps++;
-//   delay(100);
+//   delay(80);
 //   pinHigh = digitalRead(A1);
 //  }
-//   Serial.println(numSteps);
+//   Serial.println(motorRight.stepsToDegrees(numSteps - 100));
 }
 
 void loop() {
@@ -220,7 +343,7 @@ void loop() {
       motorRight.zeroStepState();
       Serial.println("Position zeroed");
       
-    }else if(incomingString.startsWith("calibrate")){
+    }else if(incomingString.startsWith("calibrate ")){
       
       const double leftAngle = getCommandParam<double>(incomingString, "l", motorLeft.getCurrentAngleDeg());
       motorLeft.calibrate(leftAngle);
@@ -230,8 +353,16 @@ void loop() {
       
     }else if(incomingString.startsWith("autocalibrate")){
       
-      const int16_t lstepsOffset = getCommandParam<long>(incomingString, "l", autocalibration_offset_left);
-      const int16_t rstepsOffset = getCommandParam<long>(incomingString, "r", autocalibration_offset_right);
+      const double lstepsOffset = getCommandParam<double>(
+        incomingString,
+        "l", 
+        eepromData.autocalibrationOffsetLeftDeg
+      );
+      const double rstepsOffset = getCommandParam<double>(
+        incomingString,
+        "r",
+        eepromData.autocalibrationOffsetRightDeg
+      );
       autoCalibrate(lstepsOffset, rstepsOffset);
       
       printCurrentAngles();
@@ -304,5 +435,15 @@ void loop() {
     }
 
   }
+  powerLossHandler.maintain();
+}
 
+ISR (ANALOG_COMP_vect)
+{
+  noInterrupts();
+  if(! powerLossHandler.isReady()){
+    return;
+  }
+  powerLossHandler.handlePowerLoss();
+  interrupts();
 }

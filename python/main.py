@@ -15,10 +15,10 @@ from gcodehandler import *
 
 
 class PrinterCommander:
-    BURST_SIZE = 15  # each point is 2 bytes -> 15*2*2+4(checksum)=64=Arduino serial buffer size
+    BURST_SIZE = 15  # each point is 2 bytes -> 15*2*2+4(checksum) = 64 = Arduino serial buffer size
 
     def __init__(self):
-        # printer physical parameters:
+        # printer physical parameters (distances in mm):
         #lego arms attached to metal wheel
         self.R1 = 99.625 - 3 * 7.97  # 99.625 <- last hole (one hole distance is 7.97mm)
         self.R2 = 99.625 - 3 * 7.97
@@ -36,8 +36,11 @@ class PrinterCommander:
         self.curr_alpha2 = 0.0
 
         self.serial = serial.Serial('COM5', 115200, timeout=1000, parity=serial.PARITY_NONE)
-        text = self.serial.readline().decode("ascii")
-        print(text)
+        startup_response = self.serial.readline().decode("ascii")
+        print(startup_response)
+
+        response = self.send_serial_command("getAlphas")
+        self.__parse_anlges_response(response)
         pass
 
     @property
@@ -220,14 +223,6 @@ class App(tk.Tk):
         self.curr_xy = (0, 0)
         self.printer = PrinterCommander()
 
-        try:
-            with open("lastAlphas.txt", "r+") as f:
-                alpha1, alpha2 = map(lambda x: float(x), f.readline().split())
-                self.printer.calibrate(alpha1, alpha2)
-                f.truncate(0)
-        except:
-            pass
-
         self.filename = tkinter.StringVar(value="../gcode/test.gcode")
         self.drawing_process = DrawingProcess(self.printer, self.filename.get(), 1)
 
@@ -240,9 +235,6 @@ class App(tk.Tk):
         if self.drawing_process.is_alive():
             self.drawing_process.stop()
             self.drawing_process.join()
-        with open("lastAlphas.txt", "w") as f:
-            a1, a2 = self.printer.current_alphas
-            f.write(f"{a1} {a2}")
         self.destroy()
 
     def start_drawing(self):
