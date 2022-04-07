@@ -19,7 +19,7 @@ class PrinterCommander:
 
     def __init__(self):
         # printer physical parameters (distances in mm):
-        #lego arms attached to metal wheel
+        # lego arms attached to metal wheel
         self.R1 = 99.625 - 3 * 7.97  # 99.625 <- last hole (one hole distance is 7.97mm)
         self.R2 = 99.625 - 3 * 7.97
         self.l1 = 159  # left wire length
@@ -39,7 +39,7 @@ class PrinterCommander:
         startup_response = self.serial.readline().decode("ascii")
         print(startup_response)
 
-        response = self.send_serial_command("getAlphas")
+        response = self.send_serial_command("getcurrangles")
         self.__parse_anlges_response(response)
         pass
 
@@ -112,14 +112,17 @@ class PrinterCommander:
         self.curr_alpha1, self.curr_alpha2 = map(float, text.split()[1:])
 
     def autocalibrate(self):
-        response = self.send_serial_command("autocalibrate")
+        response = self.send_serial_command("autocal")
         self.__parse_anlges_response(response)
 
     def set_rpm(self, rpm: float):
-        self.send_serial_command(f"setSpeed {rpm}")
+        self.send_serial_command(f"setspeed {rpm}")
 
     def zero_position(self):
-        self.send_serial_command(f'zeroAngles')
+        self.send_serial_command(f'zeroangles')
+
+    def save_angles(self):
+        self.send_serial_command(f'saveangles')
 
     def send_serial_command(self, command: str, terminator="\n") -> str:
         self.serial.write((command + terminator).encode('ascii'))
@@ -155,6 +158,7 @@ class PrinterCommander:
             self.serial.write(serializedPointList(alphass))
             text = self.serial.readline().decode("ascii")
 
+        print("Plotter response: ", text)
         self.__parse_anlges_response(text)
         print(f'actual\t\t l{self.curr_alpha1}r{self.curr_alpha2}')
 
@@ -235,10 +239,11 @@ class App(tk.Tk):
         if self.drawing_process.is_alive():
             self.drawing_process.stop()
             self.drawing_process.join()
+        self.printer.save_angles()
         self.destroy()
 
     def start_drawing(self):
-        self.drawing_process = DrawingProcess(self.printer, self.filename.get(), interpolation_resolution=0.1, speed=50)
+        self.drawing_process = DrawingProcess(self.printer, self.filename.get(), interpolation_resolution=0.1, speed=200)
         self.drawing_process.start()
         self.monitor_drawing_process()
 
