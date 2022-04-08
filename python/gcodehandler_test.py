@@ -5,8 +5,8 @@ from gcodehandler import *
 
 class TestCaseWithAllAlmostEqual(unittest.TestCase):
     def assertAllAlmostEquals(self,
-                              expected: typing.Sequence[typing.Sequence[float]],
-                              actual: typing.Sequence[typing.Sequence[float]],
+                              expected: typing.Collection[typing.Sequence[float]],
+                              actual: typing.Collection[typing.Sequence[float]],
                               *args,
                               **kwargs):
         def flatten(arr):
