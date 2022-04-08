@@ -260,11 +260,6 @@ void setup() {
   pinMode(A0, INPUT_PULLUP);
   pinMode(A1, INPUT_PULLUP);
 
-  ADCSRB = 0;           // (Disable) ACME: Analog Comparator Multiplexer Enable
-  ACSR =  bit (ACI)     // (Clear) Analog Comparator Interrupt Flag
-        | bit (ACIE)    // Analog Comparator Interrupt Enable
-        | bit (ACIS1);  // ACIS1, ACIS0: Analog Comparator Interrupt Mode Select (trigger on falling edge)
-
   Serial.begin(115200);
   Serial.setTimeout(10);
 
