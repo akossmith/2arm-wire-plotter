@@ -94,13 +94,13 @@ namespace flash{
 template<typename data_type>
 class FlashManager{
   struct FlashDataType{
-    data_type data __attribute__((packed));  // todo: look into how to pack
+    data_type data;  // todo: look into how to pack
     uint8_t _padding[(4 - sizeof(data_type) % 4) % 4];
     uint32_t isLast {0xffffffff};
 
     FlashDataType(){}
     FlashDataType(const data_type& val):data(val){}
-  } __attribute__((packed));
+  };
 
   static constexpr uint16_t highestAddress = 1019;
   static constexpr uint16_t blocksPerPage = (highestAddress + 1 - sizeof(uint32_t)) / sizeof(FlashDataType);
