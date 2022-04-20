@@ -1,3 +1,5 @@
+#pragma once 
+
 #ifdef __LGT8FX8P__
 
 namespace flash{
@@ -142,15 +144,15 @@ public:
       swapPageBegin = lowerPageStart;
     }
 
-    if((*((volatile unsigned char *)activePageBegin)) != 0x00){ // last page swap was interrupted
+    if((*((volatile unsigned char *)activePageBegin)) != 0x00){ // first word of page !=0 -> it is empty
       if((*((volatile unsigned char *)swapPageBegin)) != 0x00){ // whole eprom is empty
         putFirst(data_type());
-      }else{  // recover data from the end of the swap page
+      }else{  // last page swap was interrupted -> recover data from the end of the swap page
         currBlockNum = 0;
-        flash::rawRead(currRecord, swapPageBegin + addressOfBlock(blocksPerPage - 1));
-        // or... but this may be bad -> currRecord = (*((FlashDataType *)(swapPageBegin + addressOfBlock(blocksPerPage - 1)))); // load data from the end of the swap page
+        flash::rawRead(currRecord, swapPageBegin + addressOfBlock(blocksPerPage - 1)); // load data from the end of the swap page
+        // or... but this may be bad -> currRecord = (*((FlashDataType *)(swapPageBegin + addressOfBlock(blocksPerPage - 1)))); 
         flash::write(FlashDataType(currRecord.data), addressOfBlock(currBlockNum));
-        flash::write32(0, 0);
+        flash::write32(0, 0); 
       }
     }else{ // seek last record
       currBlockNum = 0;
@@ -165,6 +167,7 @@ public:
     }
   }
 
+  /// for priming as of yet empty flash on first use
   FlashManager(const data_type& initialRecord){
     ECCR = 0x80; ECCR = 0x4C; 
 
@@ -202,6 +205,10 @@ class FlashManager{
   FlashManager(){
     EEPROM.get(0, &cache);
     // todo: what if eeprom empty... (first use)
+  }
+
+  FlashManager(const data_type& initialRecord):cache(initialRecord){
+    EEPROM.put(0, initialRecord);
   }
 
   void put(const data_type& newData){

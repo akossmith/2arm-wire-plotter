@@ -47,7 +47,7 @@ class PrinterCommander:
     def move_to_alphas(self, alpha1_deg: float, alpha2_deg: float):
         print(f'requested\t l{alpha1_deg}r{alpha2_deg}')
 
-        response = self.send_serial_command(f'move l{alpha1_deg} r{alpha2_deg}')
+        response = self.send_serial_command(f'moveto l{alpha1_deg} r{alpha2_deg}')
         self.__parse_anlges_response(response)
 
     def move_to_xy(self, x: float, y: float):
