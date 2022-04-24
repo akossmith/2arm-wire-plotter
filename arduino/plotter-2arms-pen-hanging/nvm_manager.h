@@ -14,6 +14,9 @@ struct WithNVMData {
   mutable data_type nvmData;
 
  private:
+  template <uint16_t index, class... Ts>
+  friend class NVMDataAggregate;
+
   template <template <typename> typename, typename... Ts>
   friend class NVMManager;
 
@@ -22,17 +25,17 @@ struct WithNVMData {
   WithNVMData(T val) : nvmData(val) {}
 
  protected:
-  virtual void afterLoadFromNVM() = 0; //< called after externally initiated restore
-  virtual void beforeSaveToNVM() const = 0; //< called after externally initiated save
+  virtual void  afterLoadFromNVM() = 0;  //< called after externally initiated restore
+  virtual void beforeSaveToNVM() const = 0;  //< called after externally initiated save
 
   void setNVMData(const T& val) {
     static_cast<T&>(nvmData) = val;
     afterLoadFromNVM();
   }
 
-  const T& getNVMData() const { 
+  const T& getNVMData() const {
     beforeSaveToNVM();
-    return static_cast<const T&>(nvmData); 
+    return static_cast<const T&>(nvmData);
   }
 };
 
@@ -92,26 +95,25 @@ template <template <typename> typename flash_manager_type, typename... Ts>
 class NVMManager {
  public:
   using nvm_data_aggregate_type = NVMDataAggregate<0, Ts...>;
+
  protected:
   nvm_data_aggregate_type nvmDataAggregate;
   flash_manager_type<nvm_data_aggregate_type> flashManager;
 
  public:
-  NVMManager(Ts&... ts) : nvmDataAggregate(ts...) {
-    flashManager.put(nvmDataAggregate);
-  }
-
   /// constructor used for priming nvm for very first use
   /// using default ctors of nvmData fragments
-  NVMManager() : nvmDataAggregate{} {
-    flashManager.get(nvmDataAggregate);
+  NVMManager(Ts&... ts) : nvmDataAggregate(ts...) {
+    flashManager.putFirst(nvmDataAggregate);
   }
+
+  NVMManager() : nvmDataAggregate{} { flashManager.get(nvmDataAggregate); }
 
   const class EndBurst {
   } endBurst{};
 
-  /// Proxy object and scope guard for burst updates, i.e. modifying several values
-  /// in NVM with only a single physical write operation at the end.
+  /// Proxy object and scope guard for burst updates, i.e. modifying several
+  /// values in NVM with only a single physical write operation at the end.
   /// Usage: burstUpdater << component1 << component3 [<< endBurst];
   class BurstUpdater {
     NVMDataAggregate<0, Ts...>& nvmDataAggregate;
@@ -153,7 +155,9 @@ class NVMManager {
 
   friend class BurstUpdater;
 
-  BurstUpdater persistBurst() { return BurstUpdater(flashManager, nvmDataAggregate); }
+  BurstUpdater persistBurst() {
+    return BurstUpdater(flashManager, nvmDataAggregate);
+  }
 
   template <uint16_t ind, typename U>
   void persist(const U& originator) {

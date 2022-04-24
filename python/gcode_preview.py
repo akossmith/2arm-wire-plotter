@@ -30,7 +30,7 @@ refined_point_list = interpolator.xy_list_interpolated
 
 from matplotlib import pyplot as plt
 
-xs, ys = list(zip(*tuple(refined_point_list)))
+xs, ys, zs = list(zip(*tuple(refined_point_list)))
 plt.plot(xs, ys)
 plt.show()
 

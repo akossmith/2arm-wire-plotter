@@ -1,6 +1,6 @@
-g00 x0 y0
+g00 x0 y0 z1
 
-g01 x80 y0
+g01 x80 y0 z-1
 g01 x80 y80
 g01 x0 y80
 g01 x0 y0

@@ -48,8 +48,11 @@ class App(tk.Tk):
         if self.drawing_process.is_alive():
             self.drawing_process.stop()
             self.drawing_process.join()
-        self.printer.save_angles()
-        self.destroy()
+        try:
+            self.printer.save_angles()
+            self.printer.pen_up()
+        finally:
+            self.destroy()
 
     def start_drawing(self):
         self.drawing_process = DrawingProcess(self.printer, self.filename.get(), interpolation_resolution=0.1, speed=200)
@@ -89,6 +92,7 @@ class App(tk.Tk):
     def reset_head(self):
         if self.drawing_process.is_alive():
             return
+        self.printer.pen_up()
         self.printer.move_to_alphas(0.0, 0.0)
         pass
 
@@ -153,6 +157,14 @@ class App(tk.Tk):
         self.zero_button = ttk.Button(self.printer_controls_frame, text='Zero Angles')
         self.zero_button['command'] = self.printer.zero_position
         self.zero_button.pack(fill=tk.BOTH, side=tk.RIGHT)
+
+        self.pendown_button = ttk.Button(self.printer_controls_frame, text='Pen\u2193', width=5)
+        self.pendown_button['command'] = self.printer.pen_down
+        self.pendown_button.pack(side=tk.RIGHT)
+
+        self.penup_button = ttk.Button(self.printer_controls_frame, text='Pen\u2191', width=5)
+        self.penup_button['command'] = self.printer.pen_up
+        self.penup_button.pack(side=tk.RIGHT)
 
     def monitor_drawing_process(self):
         if self.drawing_process.is_alive():

@@ -12,15 +12,14 @@
 #include "flash_manager.h"
 
 // wires on pins 2-blue 3-yellow 4-orange 5-pink, same order for right motor
-// MyStepper motorRight(5, 4, 3, 2);
-// MyStepper motorLeft(8, 9, 10, 11);
-
 constexpr uint8_t motorLPins[] {8, 9, 10, 11};
 constexpr uint8_t motorRPins[] {5, 4, 3, 2};
+
+constexpr uint8_t penServoPin = 6;
 constexpr uint8_t motorLCalibrationSwitchPin = A0;
 constexpr uint8_t motorRCalibrationSwitchPin = A1;
 
-Actuators actuators{motorLPins, motorRPins, motorLCalibrationSwitchPin, motorRCalibrationSwitchPin};
+Actuators actuators{motorLPins, motorRPins, penServoPin, motorLCalibrationSwitchPin, motorRCalibrationSwitchPin};
 
 NVMManager<FlashManager, Actuators> nvmManager;
 
@@ -36,10 +35,11 @@ void setup() {
   Serial.begin(::baudRate);
   Serial.setTimeout(10);
 
+  nvmManager.restore<0>(actuators);
+  actuators.init();
   actuators.setSpeed(200);
 
-  nvmManager.restore<0>(actuators);
-  
+
   Serial.println("Plotter ready");
 }
 
@@ -54,10 +54,12 @@ void loop() {
       Serial.print("s");
       Serial.println(double(speed), 8);
 
-    } else if (incomingString.startsWith("getcurrangles")) {
-      printCurrentAngles();
-
-    } else if (incomingString.startsWith("zeroangles")) {
+    }    
+    ////////////////////////////////////////////////////////////////////////////////////////
+    // calibration stuff
+    ////////////////////////////////////////////////////////////////////////////////////////
+    
+    else if (incomingString.startsWith("zeroangles")) {
       actuators.zeroStepState();
       Serial.println("Position zeroed");
 
@@ -68,12 +70,6 @@ void loop() {
       Serial.print(result.first, 4);
       Serial.print(" ");
       Serial.println(result.second, 4);
-
-      // nvmManager.restore<0>(actuators);
-      // result = actuators.getAutoCalOffsets();
-      // Serial.print(result.first, 4);
-      // Serial.print(" ");
-      // Serial.println(result.second, 4);
 
     } else if (incomingString.startsWith("getautocaloffs")) {
       auto offss = actuators.getAutoCalOffsets();
@@ -92,11 +88,7 @@ void loop() {
 
       printCurrentAngles();
 
-    } else if (incomingString.startsWith("saveangles")) {
-      nvmManager.persist<0>(actuators);
-      printCurrentAngles();
-
-    }
+    }     
     // else if(incomingString.startsWith("setcurrangles ")){
 
     //   const double leftAngle = getCommandParam<double>(incomingString, "l",
@@ -108,7 +100,19 @@ void loop() {
     //   Serial.println("Calibration done");
 
     // }
-    else if (incomingString.startsWith("burst")) {
+    
+    ////////////////////////////////////////////////////////////////////////////////////////
+    // arm movement stuff
+    ////////////////////////////////////////////////////////////////////////////////////////
+
+    else if (incomingString.startsWith("getcurrangles")) {
+      printCurrentAngles();
+
+    } else if (incomingString.startsWith("saveangles")) {
+      nvmManager.persist<0>(actuators);
+      printCurrentAngles();
+
+    } else if (incomingString.startsWith("burst")) {
       Serial.println("entered burst mode");
       const uint16_t size = getCommandParam<long>(incomingString, "s", 15);
 
@@ -170,6 +174,40 @@ void loop() {
       // return actual angles in degrees (!= requested due to finite stepper
       // resolution)
       printCurrentAngles();
+
+    } 
+
+    ////////////////////////////////////////////////////////////////////////////////////////
+    // Pen servo stuff
+    ////////////////////////////////////////////////////////////////////////////////////////
+
+    else if (incomingString.startsWith("penup")) {
+      actuators.penUp();
+      Serial.println("pen is up");
+
+    } else if (incomingString.startsWith("pendown")) {
+      actuators.penDown();
+      Serial.println("pen is down");
+
+    }else if (incomingString.startsWith("penset")) {
+      const int16_t angleDeg = getCommandParam<long>(incomingString, "a", -1);
+      if (angleDeg == -1){
+        Serial.println("invalid angle");
+        return;
+      }
+      actuators.setPenServoAngle(angleDeg);
+      Serial.print("servo angle is ");
+      Serial.println(angleDeg);
+
+    } else if (incomingString.startsWith("pensaveasdown")) {
+      actuators.penSetAsDown();
+      nvmManager.persist<0>(actuators);
+      Serial.println("saved");
+
+    } else if (incomingString.startsWith("pensaveasup")) {
+      actuators.penSetAsUp();
+      nvmManager.persist<0>(actuators);
+      Serial.println("saved");
 
     } else {
       Serial.print("Invalid command: ");

@@ -1,51 +1,82 @@
 #pragma once
 
+#include <Servo.h>
+
+#include "nvm_manager.h"
 #include "stepper.h"
 #include "utils.h"
-#include "nvm_manager.h"
 
-struct ActuatorsNVMData{
+struct ActuatorsNVMData {
   // nvm data:
-  double calibrationOffsetLDeg = 9.0;
-  double calibrationOffsetRDeg = 14.49;
+  double calibrationOffsetLDeg = 13.9556;
+  double calibrationOffsetRDeg = 15.7222;
 
   double currAlhpaL = 0.0;
   double currAlhpaR = 0.0;
+
+  double penServoUpAngle = 95;
+  double penServoDownAngle = 130;
 };
 
-class Actuators: public WithNVMData<ActuatorsNVMData>{
- private:
+class Actuators : public WithNVMData<ActuatorsNVMData> {
+ public:
   MyStepper motorL;
   MyStepper motorR;
+
+  uint8_t penServoPin;
+  Servo penServo;
+  uint16_t servoDelayMs = 100;
 
   uint8_t calibrationPinLeft;
   uint8_t calibrationPinRight;
 
  public:
-  Actuators(const uint8_t motorLPins[4], const uint8_t motorRPins[4], 
-            uint8_t calibrationPinLeft,
-            uint8_t calibrationPinRight) 
+  Actuators(const uint8_t motorLPins[4], const uint8_t motorRPins[4],
+            uint8_t penServoPin, uint8_t calibrationPinLeft,
+            uint8_t calibrationPinRight)
       : motorL(motorLPins[0], motorLPins[1], motorLPins[2], motorLPins[3]),
         motorR(motorRPins[0], motorRPins[1], motorRPins[2], motorRPins[3]),
+        penServoPin(penServoPin),
         calibrationPinLeft(calibrationPinLeft),
         calibrationPinRight(calibrationPinRight) {
     pinMode(calibrationPinLeft, INPUT_PULLUP);
     pinMode(calibrationPinRight, INPUT_PULLUP);
   }
 
-  virtual void afterLoadFromNVM() override{
+  void init() {
+    penServo.attach(penServoPin);
+    penUp();
+  }
+
+  virtual void afterLoadFromNVM() override {
     motorL.setCurrentAngleDeg(nvmData.currAlhpaL);
     motorR.setCurrentAngleDeg(nvmData.currAlhpaR);
   };
 
-  virtual void beforeSaveToNVM() const override{
+  virtual void beforeSaveToNVM() const override {
     nvmData.currAlhpaL = motorL.getCurrentAngleDeg();
     nvmData.currAlhpaR = motorR.getCurrentAngleDeg();
   };
 
+  void penUp() {
+    penServo.write(static_cast<int16_t>(nvmData.penServoUpAngle));
+    delay(servoDelayMs);
+  }
+
+  void penDown() {
+    penServo.write(static_cast<int16_t>(nvmData.penServoDownAngle));
+    delay(servoDelayMs);
+  }
+
+  void setPenServoAngle(int16_t angleDeg) { penServo.write(angleDeg); }
+
+  void penSetAsDown() { nvmData.penServoDownAngle = penServo.read(); }
+
+  void penSetAsUp() { nvmData.penServoUpAngle = penServo.read(); }
+
   void setSpeed(double rpm) {
-    motorL.setSpeed(200);
-    motorR.setSpeed(200);
+    motorL.setSpeed(rpm);
+    motorR.setSpeed(rpm);
   }
 
   void zeroStepState() {
@@ -91,7 +122,6 @@ class Actuators: public WithNVMData<ActuatorsNVMData>{
     motors[smallerIndex]->step(steps[smallerIndex] -
                                sgn(steps[smallerIndex]) * minStepsTaken);
   }
-
 
   /////////////////////////////////////////////////////////////////////////////////////
   // Calibration methods

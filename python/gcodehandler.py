@@ -67,30 +67,31 @@ class GCodeInterpolator:
         return point_list
 
     @property
-    def xy_list_raw(self) -> typing.Collection[typing.Tuple[float, float]]:
-        res = remove_duplicates(map(lambda coords: (coords['X'], coords['Y']),
+    def xy_list_raw(self) -> typing.Collection[typing.Tuple[float, float, float]]:
+        res = remove_duplicates(map(lambda coords: (coords['X'], coords['Y'], coords['Z']),
                                   self.raw_coord_list))
         return list(res)
 
     @property
-    def xy_list_interpolated(self) -> typing.Collection[typing.Tuple[float, float]]:
-        curr_point = {}
-        point_list = []
+    def xy_list_interpolated(self) -> typing.Collection[typing.Tuple[float, float, float]]:
+        curr_point: dict[str, float] = {}
+        point_list: list[typing.Tuple[float, float, float]] = []
+
         for line in self.gcode_instruction_lines:
             command = GCodeInterpolator.command(line)
             coords = GCodeInterpolator.coords(line)
 
-            if "X" not in coords and "Y" not in coords:  # no x,y change, and we have no z axis
-                continue
-
             if command.letter == "G" and \
                     (command.number == 0
-                     or any(coord not in curr_point for coord in ["X", "Y"])):  # no meaningful current point yet
+                     or not point_list):  # no meaningful current point yet
                 curr_point = {**curr_point, **coords}
-                point_list.append((curr_point['X'], curr_point['Y']))
-            elif command.letter == "G" and (command.number in [1]):
-                x = coords["X"]
-                y = coords["Y"]
+                if all(coord in curr_point for coord in ["X", "Y", "Z"]):
+                    point_list.append((curr_point['X'], curr_point['Y'], curr_point['Z']))
+            elif command.letter == "G" and (command.number in [1])\
+                    and point_list:  # linear interpolation
+                xyz = {**curr_point, **coords}
+                x, y, z = xyz['X'], xyz['Y'], xyz['Z']
+
                 curr_x = curr_point['X']
                 curr_y = curr_point['Y']
 
@@ -98,7 +99,7 @@ class GCodeInterpolator:
                 dvy = y - curr_y
                 dv_norm = math.sqrt(dvx**2 + dvy**2)
 
-                if dv_norm > 0.00000001:  # just Z coord change
+                if dv_norm > 0.00000001:  # not just Z coord change
                     dvx_normed = dvx / dv_norm
                     dvy_normed = dvy / dv_norm
 
@@ -107,18 +108,20 @@ class GCodeInterpolator:
                         new_x = curr_x + dvx_normed * curr_len
                         new_y = curr_y + dvy_normed * curr_len
                         curr_len += self.max_point_dist
-                        point_list.append((new_x, new_y))
-                point_list.append((x, y))
+                        point_list.append((new_x, new_y, z))
+                point_list.append((x, y, z))
 
-                curr_point = {**curr_point, **coords}
+                curr_point = {**xyz, **coords}
                 # print(f"({curr_x},{curr_y}),", end='')
                 # point_list.append((curr_point['X'], curr_point['Y']))
 
-            elif command.letter == "G" and (command.number in [2, 3]):
+            elif command.letter == "G" and (command.number in [2, 3])\
+                    and point_list:  # circular interpolation
                 cw_dir = command.number == 2
 
-                x = coords["X"]
-                y = coords["Y"]
+                xyz = {**curr_point, **coords}
+                x, y, z = xyz['X'], xyz['Y'], xyz['Z']
+
                 i = coords["I"]
                 j = coords["J"]
                 curr_x = curr_point['X']
@@ -148,11 +151,11 @@ class GCodeInterpolator:
                         (not cw_dir and curr_angle < phi + gamma):
                     new_x = curr_x + i + math.cos(curr_angle) * R
                     new_y = curr_y + j + math.sin(curr_angle) * R
-                    point_list.append((new_x, new_y))
+                    point_list.append((new_x, new_y, z))
                     # print(f"({new_x},{new_y}),", end='')
                     curr_angle += max_angle_dist * increment_sgn
                 # print(f"({x},{y}),", end='')
-                point_list.append((x, y))
+                point_list.append((x, y, z))
                 curr_point = {**curr_point, **coords}
 
         return list(remove_duplicates(point_list))

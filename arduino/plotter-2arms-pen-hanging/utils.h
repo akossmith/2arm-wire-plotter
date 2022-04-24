@@ -33,6 +33,20 @@ int sgn(T val) {
   return (T(0) < val) - (val < T(0));
 }
 
+template <typename first_type, typename second_type>
+struct pair {
+  first_type first;
+  second_type second;
+};
+
+template <typename first_type, typename second_type>
+pair<first_type, second_type> make_pair(first_type first, second_type second);
+
+template <typename first_type, typename second_type>
+pair<first_type, second_type> make_pair(first_type first, second_type second) {
+  return pair<first_type, second_type>{first, second};
+}
+
 template <typename T>
 T toNumber(const String& str) {
   return static_cast<T>(str);
@@ -46,20 +60,6 @@ double toNumber<double>(const String& str) {
 template <>
 long toNumber<long>(const String& str) {
   return str.toInt();
-}
-
-template <typename first_type, typename second_type>
-struct pair {
-  first_type first;
-  second_type second;
-};
-
-template <typename first_type, typename second_type>
-pair<first_type, second_type> make_pair(first_type first, second_type second);
-
-template <typename first_type, typename second_type>
-pair<first_type, second_type> make_pair(first_type first, second_type second) {
-  return pair<first_type, second_type>{first, second};
 }
 
 /// command format: "<commmand> <param1 name><param1value> <param2 name><param2

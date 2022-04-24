@@ -51,20 +51,22 @@ class GCodeInterpolatorBasicTest(TestCaseWithAllAlmostEqual):
 
     def test_raw_xy(self):
         expected = [
-            (32.758016, 69.299180),
-            (29.636206, 68.702469),
-            (25.484210, 67.556340)
+            (32.758016, 69.29918, 5.0),
+            (32.758016, 69.29918, -0.125),
+            (29.636206, 68.702469, -0.125),
+            (25.48421, 67.55634, -0.125)
         ]
         self.assertEqual(expected, self.interp.xy_list_raw)
 
     def test_interpolated_xy_regression_test(self):
         expected = [
-            (32.758016, 69.29918),
-            (30.787698575660663, 68.95753974270235),
-            (29.636206, 68.702469),
-            (27.698973927426756, 68.20568281833968),
-            (25.778472081495725, 67.64770676771514),
-            (25.48421, 67.55634)
+            (32.758016, 69.29918, 5.0),
+            (32.758016, 69.29918, -0.125),
+            (30.787698575660663, 68.95753974270235, -0.125),
+            (29.636206, 68.702469, -0.125),
+            (27.698973927426756, 68.20568281833968, -0.125),
+            (25.778472081495725, 67.64770676771514, -0.125),
+            (25.48421, 67.55634, -0.125)
         ]
         self.assertAllAlmostEquals(expected, self.interp.xy_list_interpolated, delta=0.01)
 
@@ -72,64 +74,64 @@ class GCodeInterpolatorBasicTest(TestCaseWithAllAlmostEqual):
 class GCodeInterpolatorInterpolationTest(TestCaseWithAllAlmostEqual):
     def test_g2_interpolation(self):
         text = [
-            "G00 X1 Y1\n",
+            "G00 X1 Y1 z0\n",
             "G02 X3 Y3 i2 j0\n",
         ]
         max_point_dist = 1
         interp = GCodeInterpolator(text, max_point_dist)
         expected = [
-            (1, 1),
-            (1.2448348762192545, 1.958851077208406),
-            (1.9193953882637205, 2.682941969615793),
-            (2.8585255966645944, 2.994989973208109),
-            (3, 3)
+            (1.0, 1.0, 0.0),
+            (1.2448348762192545, 1.9588510772084058, 0.0),
+            (1.9193953882637205, 2.6829419696157926, 0.0),
+            (2.858525596664594, 2.994989973208109, 0.0),
+            (3.0, 3.0, 0.0)
         ]
         self.assertAllAlmostEquals(expected, interp.xy_list_interpolated, delta=0.01)
 
     def test_g3_interpolation(self):
         text = [
-            "G00 X3 Y3\n",
+            "G00 X3 Y3 z0\n",
             "G03 X1 Y1 i0 j-2\n",
         ]
         max_point_dist = 1
         interp = GCodeInterpolator(text, max_point_dist)
         expected = [
-            (3, 3),
-            (2.041148922791594, 2.7551651237807455),
-            (1.317058030384207, 2.0806046117362795),
-            (1.005010026791891, 1.1414744033354058),
-            (1, 1),
+            (3.0, 3.0, 0.0),
+            (2.041148922791594, 2.7551651237807455, 0.0),
+            (1.317058030384207, 2.0806046117362795, 0.0),
+            (1.005010026791891, 1.141474403335406, 0.0),
+            (1.0, 1.0, 0.0)
         ]
         self.assertAllAlmostEquals(expected, interp.xy_list_interpolated, delta=0.01)
 
     def test_linear_interpolation(self):
         text = [
-            "G00 X3 Y3\n",
+            "G00 X3 Y3 z1\n",
             "G01 X7.5 Y7.5\n",
         ]
         max_point_dist = math.sqrt(2)
         interp = GCodeInterpolator(text, max_point_dist)
         expected = [
-            (3, 3),
-            (4, 4),
-            (5, 5),
-            (6, 6),
-            (7, 7),
-            (7.5, 7.5),
+            (3.0, 3.0, 1.0),
+            (4.0, 4.0, 1.0),
+            (5.0, 5.0, 1.0),
+            (6.0, 6.0, 1.0),
+            (7.0, 7.0, 1.0),
+            (7.5, 7.5, 1.0)
         ]
         self.assertAllAlmostEquals(expected, interp.xy_list_interpolated, delta=0.01)
 
     def test_linear_interpolation2(self):
         text = [
-            "G00 X0 Y0\n",
+            "G00 X0 Y0 z0\n",
             "G01 X-2 Y-4\n",
         ]
         max_point_dist = math.sqrt(5)
         interp = GCodeInterpolator(text, max_point_dist)
         expected = [
-            (0, 0),
-            (-1, -2),
-            (-2, -4),
+            (0, 0, 0),
+            (-1, -2, 0),
+            (-2, -4, 0),
         ]
         self.assertAllAlmostEquals(expected, interp.xy_list_interpolated, delta=0.01)
 

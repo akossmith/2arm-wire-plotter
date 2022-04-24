@@ -44,6 +44,12 @@ class PrinterCommander:
     def current_alphas(self) -> typing.Tuple[float, float]:
         return self.curr_alpha1, self.curr_alpha2
 
+    def pen_up(self):
+        self.send_serial_command("penup")
+
+    def pen_down(self):
+        self.send_serial_command("pendown")
+
     def move_to_alphas(self, alpha1_deg: float, alpha2_deg: float):
         print(f'requested\t l{alpha1_deg}r{alpha2_deg}')
 
@@ -124,6 +130,7 @@ class PrinterCommander:
         D = self.D
 
         # x = -x + self.x_min + self.width # mirroring
+        # y = self.height - y + self.y_min  # vertical mirroring
         # x = x * 0.8  # scaling
         # y = y * 0.8
 
