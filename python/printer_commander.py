@@ -129,13 +129,12 @@ class PrinterCommander:
         l2 = self.l2
         D = self.D
 
-        # x = -x + self.x_min + self.width # mirroring
-        # y = self.height - y + self.y_min  # vertical mirroring
         # x = x * 0.8  # scaling
         # y = y * 0.8
 
-        x = x + self.x_min
-        y = y + self.y_min
+        x = x + self.x_min + 10
+        y = self.height - y + self.y_min  # vertical mirroring
+
         print(f"x,y: {x:3.5f} {y:3.5f}", end=' ')
 
         # formulae valid for angles in [0, 180deg] (practically meaningful: [0, ~130deg])

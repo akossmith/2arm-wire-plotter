@@ -204,6 +204,12 @@ void loop() {
       nvmManager.persist<0>(actuators);
       Serial.println("saved");
 
+    } else if (incomingString.startsWith("pengetservoangles")) {
+      Serial.print("up ");
+      Serial.print(actuators.getPenUpAngle());
+      Serial.print(" down ");
+      Serial.println(actuators.getPenDownAngle());
+
     } else if (incomingString.startsWith("pensaveasup")) {
       actuators.penSetAsUp();
       nvmManager.persist<0>(actuators);

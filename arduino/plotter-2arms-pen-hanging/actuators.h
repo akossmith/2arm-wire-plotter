@@ -14,8 +14,8 @@ struct ActuatorsNVMData {
   double currAlhpaL = 0.0;
   double currAlhpaR = 0.0;
 
-  double penServoUpAngle = 95;
-  double penServoDownAngle = 130;
+  double penServoUpAngle = 55;
+  double penServoDownAngle = 95;
 };
 
 class Actuators : public WithNVMData<ActuatorsNVMData> {
@@ -69,6 +69,14 @@ class Actuators : public WithNVMData<ActuatorsNVMData> {
   }
 
   void setPenServoAngle(int16_t angleDeg) { penServo.write(angleDeg); }
+
+  double getPenUpAngle() {
+    return nvmData.penServoUpAngle;
+  }
+
+  double getPenDownAngle() {
+    return nvmData.penServoDownAngle;
+  }
 
   void penSetAsDown() { nvmData.penServoDownAngle = penServo.read(); }
 
