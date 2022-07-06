@@ -1,3 +1,3 @@
 # Proof of Concept Plotter with Arduino
 
-A short video: https://www.youtube.com/watch?v=inYvUCkPbb4
+A short video demonstration: https://youtu.be/29N1TWHB0d0
